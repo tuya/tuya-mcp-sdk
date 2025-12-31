@@ -95,7 +95,7 @@ class MCPSdk:
                 access_id=self.mcpsdk_config.access_id,
                 access_secret=self.mcpsdk_config.access_secret,
                 custom_mcp_server_endpoint=custom_mcp_server_endpoint,
-                reconnect_config=self.mcpsdk_config.reconnect_config
+                reconnect_config=None
             )
 
             # Set custom message handler or default MCP forwarding handler
