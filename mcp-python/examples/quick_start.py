@@ -23,6 +23,10 @@ except ImportError:
     raise ImportError("mcp_sdk package is required but not available")
 
 # Configure logging
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+    
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -50,7 +54,7 @@ class AsyncMCPSDKClient:
                 raise ImportError(
                     "mcp_sdk package is required but not available")
 
-            logger.info("🚀 Starting MCP SDK (Async version)...")
+            logger.info("Starting MCP SDK (Async version)...")
 
             # Create SDK instance
             self.mcpsdk = create_mcpsdk(
@@ -68,14 +72,14 @@ class AsyncMCPSDKClient:
             await self.mcpsdk.start_background()
 
             self._running = True
-            logger.info("✅ MCP SDK started successfully!")
+            logger.info("MCP SDK started successfully!")
             logger.info("   Connected: %s", self.mcpsdk.is_connected)
             logger.info("   Running: %s", self.mcpsdk.is_running)
             logger.info(
                 "   Custom MCP Server: %s", self.config.get('custom_mcp_server_endpoint'))
 
         except Exception as e:
-            logger.error("❌ Failed to start MCP SDK: %s", e)
+            logger.error("Failed to start MCP SDK: %s", e)
             raise
 
     async def run(self):
@@ -87,7 +91,7 @@ class AsyncMCPSDKClient:
         self._setup_signal_handlers()
 
         try:
-            logger.info("📊 MCP SDK is running, starting health monitoring...")
+            logger.info("MCP SDK is running, starting health monitoring...")
 
             # Health monitoring loop
             check_count = 0
@@ -101,41 +105,41 @@ class AsyncMCPSDKClient:
                 if is_connected and is_running:
                     if check_count % 6 == 0:  # Print once per minute
                         logger.info(
-                            "💚 MCP SDK healthy - Check #%s", check_count)
+                            "MCP SDK healthy - Check #%s", check_count)
                 elif is_running and not is_connected:
                     logger.warning(
-                        "🔄 MCP SDK reconnecting... - Check #%s", check_count)
+                        "MCP SDK reconnecting... - Check #%s", check_count)
                 else:
                     logger.error(
-                        "❌ MCP SDK not running - Check #%s", check_count)
+                        "MCP SDK not running - Check #%s", check_count)
                     break
 
                 await asyncio.sleep(10)
 
         except asyncio.CancelledError:
-            logger.info("🛑 MCP SDK monitoring cancelled")
+            logger.info("MCP SDK monitoring cancelled")
         except KeyboardInterrupt:
-            logger.info("👋 MCP SDK stopped by user")
+            logger.info("MCP SDK stopped by user")
         finally:
             await self.shutdown()
 
     async def shutdown(self):
         """Graceful shutdown"""
-        logger.info("🛑 Shutting down MCP SDK...")
+        logger.info("Shutting down MCP SDK...")
         self._running = False
         self._shutdown_event.set()
 
         if self.mcpsdk:
             try:
                 await self.mcpsdk.shutdown()
-                logger.info("✅ MCP SDK shutdown completed")
+                logger.info("MCP SDK shutdown completed")
             except Exception as e:
-                logger.error("❌ Error during shutdown: %s", e)
+                logger.error("Error during shutdown: %s", e)
 
     def _setup_signal_handlers(self):
         """Set up signal handling"""
         def signal_handler():
-            logger.info("👋 Received shutdown signal...")
+            logger.info("Received shutdown signal...")
             asyncio.create_task(self.shutdown())
 
         # Set up signal handlers
@@ -170,7 +174,7 @@ async def quick_start_async():
         'custom_mcp_server_endpoint': os.getenv('CUSTOM_MCP_SERVER_ENDPOINT', 'http://localhost:8765/mcp')
     }
 
-    logger.info("🎯 MCP SDK Quick Start - Async Version")
+    logger.info("MCP SDK Quick Start - Async Version")
     logger.info("=" * 50)
     logger.info("Configuration:")
     logger.info("  Endpoint: %s", config['endpoint'])
@@ -186,9 +190,9 @@ async def quick_start_async():
         await client.run()
 
     except KeyboardInterrupt:
-        logger.info("👋 Quick start stopped by user")
+        logger.info("Quick start stopped by user")
     except Exception as e:
-        logger.error("❌ Error in quick start: %s", e)
+        logger.error("Error in quick start: %s", e)
         raise
     finally:
         await client.shutdown()
@@ -208,7 +212,7 @@ async def run_with_performance_monitoring():
         initial_memory = process.memory_info().rss / 1024 / 1024  # MB
         initial_cpu = process.cpu_percent()
         logger.info(
-            "📊 Starting performance monitoring - Initial memory: %sMB, CPU: %s%%", initial_memory, initial_cpu)
+            "Starting performance monitoring - Initial memory: %sMB, CPU: %s%%", initial_memory, initial_cpu)
     except ImportError:
         psutil_available = False
         logger.warning("psutil not available, performance monitoring disabled")
@@ -223,7 +227,7 @@ async def run_with_performance_monitoring():
             final_memory = process.memory_info().rss / 1024 / 1024  # MB
 
             logger.info("=" * 50)
-            logger.info("📊 Performance Statistics:")
+            logger.info("Performance Statistics:")
             logger.info("  Runtime: %s", end_time - start_time)
             logger.info(
                 "  Memory usage: %sMB → %sMB", initial_memory, final_memory)
@@ -232,7 +236,7 @@ async def run_with_performance_monitoring():
             logger.info("=" * 50)
         else:
             logger.info("=" * 50)
-            logger.info("📊 Performance Statistics:")
+            logger.info("Performance Statistics:")
             logger.info("  Runtime: %s", end_time - start_time)
             logger.info(
                 "  Performance monitoring not available (psutil not installed)")
@@ -245,15 +249,15 @@ if __name__ == "__main__":
         try:
             import uvloop
             asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
-            logger.info("🚀 Using uvloop for performance improvement")
+            logger.info("Using uvloop for performance improvement")
         except ImportError:
-            logger.info("📝 Using default asyncio event loop")
+            logger.info("Using default asyncio event loop")
 
         # Run version with performance monitoring
         asyncio.run(run_with_performance_monitoring())
 
     except KeyboardInterrupt:
-        logger.error("👋 Service stopped")
+        logger.error("Service stopped")
     except Exception as e:
-        logger.error("❌ Startup failed: %s", e, exc_info=True)
+        logger.error("Startup failed: %s", e, exc_info=True)
         sys.exit(1)

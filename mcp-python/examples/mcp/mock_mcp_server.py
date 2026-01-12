@@ -33,7 +33,7 @@ class MockMCPServer:
         # Register tools
         self._register_tools()
 
-        logger.info("🚀 Mock MCP Server initialized with FastMCP")
+        logger.info("Mock MCP Server initialized with FastMCP")
 
     def _register_tools(self):
         """Register tools: take_photo and play_music"""
@@ -250,11 +250,11 @@ class MockMCPServer:
                 return f"Failed to stop music: {str(e)}"
 
         logger.info(
-            "✅ Tools registered: take_photo, view_photo, play_music, stop_music")
+            "Tools registered: take_photo, view_photo, play_music, stop_music")
 
     async def start_stdio(self):
         """Start MCP server in stdio mode"""
-        logger.info("🔧 Mock MCP Server with FastMCP")
+        logger.info("Mock MCP Server with FastMCP")
         logger.info("=" * 50)
         logger.info(
             "This server simulates an MCP server using FastMCP framework.")
@@ -275,7 +275,7 @@ class MockMCPServer:
         async def health_check(_: Request) -> PlainTextResponse:
             return PlainTextResponse("OK")
 
-        logger.info("🌐 Starting Mock MCP Server on http://%s:%s", host, port)
+        logger.info("Starting Mock MCP Server on http://%s:%s", host, port)
         await self.app.run_http_async(host=host, port=port)
 
     def get_app(self):
@@ -295,7 +295,7 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logger.info("👋 Mock MCP Server stopped.")
+        logger.info("Mock MCP Server stopped.")
     except Exception as e:
-        logger.error("❌ Error starting server: %s", e)
+        logger.error("Error starting server: %s", e)
         raise

@@ -37,9 +37,9 @@ func registerTool(mcpServer *server.MCPServer, tool Tools) {
 
 // StartHTTP starts MCP server in HTTP mode
 func (s *MCPServer) StartHTTP(customMcpServerEndpoint string) {
-	log.Printf("🚀 Starting MCP Server (HTTP mode)...")
-	log.Printf("📍 Server address: %s", customMcpServerEndpoint)
-	log.Printf("📋 Available tools:")
+	log.Printf("Starting MCP Server (HTTP mode)...")
+	log.Printf("Server address: %s", customMcpServerEndpoint)
+	log.Printf("Available tools:")
 	log.Printf("   - play_music: Play music, you can play music by name's keyword, e.g. 'classic'")
 	log.Printf("   - stop_music: Stop playing music")
 	log.Printf("   - take_photo: Take a photo")

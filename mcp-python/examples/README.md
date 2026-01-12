@@ -22,8 +22,8 @@ async def main():
         custom_mcp_server_endpoint="http://localhost:8765/mcp",
     ) as mcpsdk:
         
-        print("🚀 MCP SDK connected successfully!")
-        print(f"🔧 MCP Server: {mcpsdk.custom_mcp_server_endpoint}")
+        print("MCP SDK connected successfully!")
+        print(f"MCP Server: {mcpsdk.custom_mcp_server_endpoint}")
         
         # Start background listening
         await mcpsdk.start_background()

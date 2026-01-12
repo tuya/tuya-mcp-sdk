@@ -128,7 +128,7 @@ class WebSocketAdapter:
                 proxy=None
             )
 
-            logger.info("✅ [MCP-SDK] WebSocket connection established successfully! Client ID: %s",
+            logger.info("[MCP-SDK] WebSocket connection established successfully! Client ID: %s",
                         self._token_data.client_id)
 
         except Exception as e:
@@ -151,7 +151,7 @@ class WebSocketAdapter:
     async def start_listening(self):
         """Start listening for messages"""
         self._running = True
-        logger.info("👂 [MCP-SDK] Started listening for WebSocket messages...")
+        logger.info("[MCP-SDK] Started listening for WebSocket messages...")
 
         # Start network monitoring for connection manager
         await self._connection_manager.start_monitoring()
@@ -160,7 +160,7 @@ class WebSocketAdapter:
         heartbeat_task = None
         if self._heartbeat_manager:
             heartbeat_task = asyncio.create_task(self._monitor_heartbeat())
-            logger.info("💓 [MCP-SDK] Heartbeat monitoring started")
+            logger.info("[MCP-SDK] Heartbeat monitoring started")
 
         try:
             while self._running:
@@ -185,18 +185,18 @@ class WebSocketAdapter:
                             logger.error("Error handling message: %s", e)
 
                 except ConnectionClosed:
-                    logger.warning("⚠️ [MCP-SDK] WebSocket connection closed")
+                    logger.warning("[MCP-SDK] WebSocket connection closed")
                     self._websocket = None
                     self._connection_manager.trigger_reconnect(
                         "Connection closed")
                 except WebSocketException as e:
-                    logger.error("❌ [MCP-SDK] WebSocket error: %s", e)
+                    logger.error("[MCP-SDK] WebSocket error: %s", e)
                     self._websocket = None
                     self._connection_manager.trigger_reconnect(
                         f"WebSocket error: {e}")
                 except Exception as e:
                     logger.error(
-                        "🚨 [MCP-SDK] Unexpected error: %s", e, exc_info=True)
+                        "[MCP-SDK] Unexpected error: %s", e, exc_info=True)
                     self._connection_manager.trigger_reconnect(
                         f"Unexpected error: {e}")
 
@@ -226,9 +226,9 @@ class WebSocketAdapter:
     def _on_network_change(self, is_available: bool):
         """Network state change callback"""
         if is_available:
-            logger.info("🌐 Network recovered")
+            logger.info("Network recovered")
         else:
-            logger.warning("🚫 Network unavailable")
+            logger.warning("Network unavailable")
 
     async def _check_network_connectivity(self) -> Optional[bool]:
         """Check network connectivity"""
@@ -320,7 +320,7 @@ class WebSocketAdapter:
                     # Parse as SDK request
                     request = MCPSdkRequest(**converted_data)
                     logger.info(
-                        "📨 [MCP-SDK] Received request: %s (ID: %s)", request.method, request.request_id)
+                        "[MCP-SDK] Received request: %s (ID: %s)", request.method, request.request_id)
 
                     # Call message handler
                     if self.message_handler:
@@ -329,7 +329,7 @@ class WebSocketAdapter:
                             await self._send_response(response, original_request_data=data)
                         else:
                             logger.info(
-                                "📤 [MCP-SDK] No response required for request: %s", request.request_id)
+                                "[MCP-SDK] No response required for request: %s", request.request_id)
                     else:
                         logger.warning(
                             "No message handler set, ignoring request")
@@ -468,7 +468,7 @@ class WebSocketAdapter:
             if self._websocket:
                 await self._websocket.send(message)
                 logger.info(
-                    "📤 [MCP-SDK] Response sent: %s, message: %s", response.request_id, message)
+                    "[MCP-SDK] Response sent: %s, message: %s", response.request_id, message)
             else:
                 logger.error("WebSocket connection not available")
 

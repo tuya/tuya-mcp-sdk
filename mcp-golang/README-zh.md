@@ -79,7 +79,7 @@ if err != nil {
 - 创建一个MCP Server
 ```go
 s := server.NewMCPServer(
-    "Demo 🚀",
+    "Demo",
     "1.0.0",
     server.WithToolCapabilities(false),
 )
@@ -124,7 +124,7 @@ import (
 func main() {
     // Create a new MCP server
     s := server.NewMCPServer(
-        "Demo 🚀",
+        "Demo",
         "1.0.0",
         server.WithToolCapabilities(false),
     )

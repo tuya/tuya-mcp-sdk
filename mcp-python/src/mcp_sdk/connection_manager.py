@@ -157,6 +157,8 @@ class ConnectionManager:
             logger.warning("Connection manager is shutdown, cannot connect")
             return False
 
+        # Clear stop event to allow reconnection
+        self._stop_event.clear()
         self._set_state(ConnectionState.CONNECTING)
 
         try:
@@ -218,6 +220,9 @@ class ConnectionManager:
 
         logger.info("Triggering reconnect: %s", reason)
 
+        # Clear stop event to allow reconnection loop to run
+        self._stop_event.clear()
+
         # If already reconnecting, don't start again
         if self._reconnect_task and not self._reconnect_task.done():
             logger.debug("Reconnect task already running")
@@ -227,6 +232,7 @@ class ConnectionManager:
 
     async def _reconnect_loop(self):
         """Reconnection loop"""
+        logger.info("Starting reconnect loop")
         self._set_state(ConnectionState.RECONNECTING)
 
         while not self._stop_event.is_set():
@@ -239,7 +245,9 @@ class ConnectionManager:
                     break
 
                 # Wait for network availability
+                logger.debug("Checking network availability...")
                 await self._wait_for_network()
+                logger.debug("Network check completed")
 
                 if self._stop_event.is_set():
                     break
@@ -265,10 +273,15 @@ class ConnectionManager:
                 logger.info("Attempting reconnection #%s", self._retry_count)
 
                 success = await self.connect()
+                logger.info("Reconnection attempt #%s result: %s",
+                            self._retry_count, success)
                 if success:
-                    logger.info("Reconnection successful")
+                    logger.info(
+                        "Reconnection successful after %s attempts", self._retry_count)
                     break
                 else:
+                    logger.info(
+                        "Reconnection attempt #%s failed, will retry", self._retry_count)
                     # Update reconnection interval
                     self._update_retry_interval()
 
@@ -285,7 +298,7 @@ class ConnectionManager:
                 logger.error("Error in reconnect loop: %s", e)
                 await asyncio.sleep(1)  # Avoid rapid failure loops
 
-        logger.debug("Reconnect loop ended")
+        logger.info("Reconnect loop ended")
 
     def _calculate_retry_delay(self) -> float:
         """Calculate retry delay (including jitter)"""

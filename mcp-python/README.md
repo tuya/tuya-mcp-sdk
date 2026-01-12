@@ -26,7 +26,7 @@ import asyncio
 
 async def main():
     async with mcpsdk:
-        print("🚀 MCP SDK connected successfully!")
+        print("MCP SDK connected successfully!")
         await mcpsdk.start_background()
         
         # Keep running
@@ -90,7 +90,7 @@ if __name__ == "__main__":
 ```python
 from fastmcp import FastMCP
 
-mcp_server = FastMCP("Demo 🚀")
+mcp_server = FastMCP("Demo")
 ```
 
 - Create a Tool
@@ -111,7 +111,7 @@ from fastmcp import FastMCP
 
 def main():
     # Create a new MCP server
-    mcp_server = FastMCP("Demo 🚀")
+    mcp_server = FastMCP("Demo")
 
     # Add tool
     @mcp_server.tool()
