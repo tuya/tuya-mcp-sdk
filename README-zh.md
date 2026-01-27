@@ -9,7 +9,6 @@
 
 [🚀 快速开始](#-快速开始) •
 [📖 文档说明](#-文档说明) •
-[🛠️ 示例代码](#️-示例代码)
 
 ## ✨ 特性
 
@@ -52,65 +51,11 @@ Tuya MCP SDK通过实现模型上下文协议标准，在自定义MCP服务器�
 ### 2. 选择您的SDK
 
 #### 🐍 Python SDK Example
+- [Python SDK 示例](mcp-python)
 
-```bash
-# 克隆仓库
-git clone https://github.com/tuya/tuya-mcp-sdk.git
-cd tuya-mcp-sdk/mcp-python
-
-# 安装依赖
-pip install -e .
-
-# 运行示例
-python examples/quick_start.py
-```
-
-**Python SDK 使用方法：**
-
-```python
-from mcp_sdk import create_mcpsdk
-
-# 初始化SDK
-async with create_mcpsdk(
-    endpoint="your-endpoint",
-    access_id="your-access-id", 
-    access_secret="your-access-secret",
-    custom_mcp_server_endpoint="http://localhost:8765/mcp"
-) as sdk:
-    # 您的MCP服务器现在已连接到涂鸦云！
-    await sdk.run()
-```
 
 #### 🐹 Go SDK Example
-
-```bash
-# 进入Go SDK目录
-cd tuya-mcp-sdk/mcp-golang
-
-# 安装依赖
-go mod tidy
-
-# 运行示例
-go run examples/main.go
-```
-
-**Go SDK 使用方法：**
-
-```go
-import "mcp-sdk/pkg/mcpsdk"
-
-// 初始化SDK
-mcpsdk, err := sdk.NewMCPSdk(
-    sdk.WithMCPServerEndpoint("http://localhost:8765/mcp"),
-    sdk.WithAccessParams("access-id", "access-secret", "endpoint"),
-)
-if err != nil {
-    log.Fatal(err)
-}
-
-// 启动SDK
-err = mcpsdk.Run()
-```
+- [Golang SDK 示例](mcp-golang)
 
 ## 📖 文档说明
 
@@ -141,11 +86,6 @@ tuya-mcp-sdk/
     ├── examples/               # Go示例
     └── README-zh.md            # Go专用中文文档
 ```
-
-## 🛠️ 示例代码
-
-- [Golang SDK 示例](mcp-golang/examples)
-- [Python SDK 示例](mcp-python/examples)
 
 ## 📜 许可证
 

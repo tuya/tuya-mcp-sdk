@@ -10,8 +10,6 @@ A comprehensive SDK that empowers developers to integrate their custom capabilit
 
 [🚀 Quick Start](#-quick-start) •
 [📖 Documentation](#-documentation) •
-[🛠️ Examples](#️-examples) 
-
 
 ## ✨ Features
 
@@ -54,65 +52,10 @@ The Tuya MCP SDK bridges the gap between Custom MCP Server and Tuya Developer Pl
 ### 2. Choose Your SDK
 
 #### 🐍 Python SDK Example
-
-```bash
-# Clone the repository
-git clone https://github.com/tuya/tuya-mcp-sdk.git
-cd tuya-mcp-sdk/mcp-python
-
-# Install dependencies
-pip install -e .
-
-# Run the example
-python examples/quick_start.py
-```
-
-**Python SDK Usage:**
-
-```python
-from mcp_sdk import create_mcpsdk
-
-# Initialize SDK
-async with create_mcpsdk(
-    endpoint="your-endpoint",
-    access_id="your-access-id", 
-    access_secret="your-access-secret",
-    custom_mcp_server_endpoint="http://localhost:8765/mcp"
-) as sdk:
-    # Your MCP server is now connected to Tuya Cloud!
-    await sdk.run()
-```
+- [Python SDK Example](mcp-python)
 
 #### 🐹 Go SDK Example
-
-```bash
-# Navigate to Go SDK
-cd tuya-mcp-sdk/mcp-golang
-
-# Install dependencies
-go mod tidy
-
-# Run the example
-go run examples/main.go
-```
-
-**Go SDK Usage:**
-
-```go
-import "mcp-sdk/pkg/mcpsdk"
-
-// Initialize SDK
-mcpsdk, err := sdk.NewMCPSdk(
-    sdk.WithMCPServerEndpoint("http://localhost:8765/mcp"),
-    sdk.WithAccessParams("access-id", "access-secret", "endpoint"),
-)
-if err != nil {
-    log.Fatal(err)
-}
-
-// Start the SDK
-err = mcpsdk.Run()
-```
+- [Golang SDK Example](mcp-golang)
 
 ## 📖 Documentation
 
@@ -141,10 +84,6 @@ tuya-mcp-sdk/
     ├── examples/               # Go examples
     └── README.md               # Go-specific docs
 ```
-
-## 🛠️ Examples
-- [Golang SDK Example](mcp-golang/examples)
-- [Python SDK Example](mcp-python/examples)
 
 ## 📜 License
 
