@@ -3,17 +3,17 @@ MCP SDK Client - Main client class
 """
 
 import asyncio
-import logging
-from typing import Optional, Dict, Any
-import time
 import json
+import logging
+import time
+from typing import Any, Awaitable, Callable, Dict, Optional, Union
 
-from .models import AuthConfig, MCPSdkRequest, MCPSdkResponse, TokenData
 from .auth import AuthManager
-from .websocket_adapter import WebSocketAdapter
 from .connection_manager import ReconnectConfig
+from .exceptions import ConnectionError, MCPSdkError
 from .mcp_client import MCPClientManager
-from .exceptions import MCPSdkError, ConnectionError
+from .models import AuthConfig, MCPSdkRequest, MCPSdkResponse, TokenData
+from .websocket_adapter import WebSocketAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,12 @@ class MCPSdkClient:
         access_id: str,
         access_secret: str,
         custom_mcp_server_endpoint: Optional[str] = None,
-        reconnect_config: Optional[ReconnectConfig] = None
+        reconnect_config: Optional[ReconnectConfig] = None,
+        custom_mcp_server_params: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, str]] = None,
+        headers_provider: Optional[
+            Callable[[], Union[Dict[str, str], Awaitable[Dict[str, str]], None]]
+        ] = None,
     ):
         """
         Initialize MCP SDK client
@@ -57,7 +62,7 @@ class MCPSdkClient:
                 max_retries=-1,
                 backoff_multiplier=2.0,
                 jitter_range=0.1,
-                reset_threshold=100
+                reset_threshold=100,
             )
 
         self.reconnect_config = reconnect_config
@@ -68,13 +73,17 @@ class MCPSdkClient:
             access_secret=access_secret,
             message_handler=self._handle_sdk_request,
             token_provider=self._get_token_for_reconnect,
-            reconnect_config=self.reconnect_config
+            reconnect_config=self.reconnect_config,
         )
 
         self.mcp_client_manager: Optional[MCPClientManager] = None
         if custom_mcp_server_endpoint:
             self.mcp_client_manager = MCPClientManager(
-                custom_mcp_server_endpoint)
+                custom_mcp_server_endpoint,
+                reconnect_config=reconnect_config,
+                headers=headers,
+                headers_provider=headers_provider,
+            )
 
         self._connected = False
         self._running = False
@@ -181,16 +190,34 @@ class MCPSdkClient:
             raise MCPSdkError("MCP client not configured")
 
         try:
+            method = request.get("method")
+            if not isinstance(method, str) or not method:
+                raise MCPSdkError("Request missing required 'method' field")
+
+            ts = str(int(time.time() * 1000))
+
             # Build SDK request
             sdk_request = MCPSdkRequest(
-                request_id=f"req_{int(time.time() * 1000)}",
-                request=request
+                request_id=f"req_{ts}",
+                endpoint="",
+                version="v1",
+                method=method,
+                ts=ts,
+                request=json.dumps(request, separators=(",", ":"), ensure_ascii=False),
+                sign=None,
             )
 
             # Send request through MCP client
             response = await self.mcp_client_manager.send_request(sdk_request)
 
-            return response.response_data
+            # Response body is JSON string (best-effort parse)
+            try:
+                parsed = json.loads(response.response)
+                if isinstance(parsed, dict):
+                    return parsed
+                return {"data": parsed}
+            except Exception:
+                return {"raw": response.response}
 
         except Exception as e:
             raise MCPSdkError(f"Failed to send request: {e}") from e
@@ -209,15 +236,19 @@ class MCPSdkClient:
 
         try:
             if not self.mcp_client_manager:
-                error_string = json.dumps({"error": "MCP client not configured"}, separators=(
-                    ',', ':'), ensure_ascii=False)
+                error_string = json.dumps(
+                    {"error": "MCP client not configured"},
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                )
                 return MCPSdkResponse(
                     request_id=request.request_id,
                     endpoint=request.endpoint,
                     version=request.version,
                     method=request.method,
-                    ts=str(int(asyncio.get_event_loop().time() * 1000)),
-                    response=error_string
+                    ts=str(int(time.time() * 1000)),
+                    response=error_string,
+                    sign=None,
                 )
 
             # Process request through MCP client
@@ -227,19 +258,38 @@ class MCPSdkClient:
         except Exception as e:
             logger.error("Failed to handle SDK request: %s", e)
             error_string = json.dumps(
-                {"error": str(e)}, separators=(',', ':'), ensure_ascii=False)
+                {"error": str(e)}, separators=(",", ":"), ensure_ascii=False
+            )
             return MCPSdkResponse(
                 request_id=request.request_id,
                 endpoint=request.endpoint,
                 version=request.version,
                 method=request.method,
-                ts=str(int(asyncio.get_event_loop().time() * 1000)),
-                response=error_string
+                ts=str(int(time.time() * 1000)),
+                response=error_string,
+                sign=None,
             )
 
-    def set_mcp_server(self, mcp_server_endpoint: str):
+    def set_mcp_server(
+        self,
+        mcp_server_endpoint: str,
+        server_params: Optional[Dict[str, Any]] = None,
+    ):
         """Set MCP server URI"""
-        self.mcp_client_manager = MCPClientManager(mcp_server_endpoint)
+        headers: Optional[Dict[str, str]] = None
+        headers_provider: Optional[
+            Callable[[], Union[Dict[str, str], Awaitable[Dict[str, str]], None]]
+        ] = None
+        if server_params:
+            headers = server_params.get("headers")
+            headers_provider = server_params.get("headers_provider")
+
+        self.mcp_client_manager = MCPClientManager(
+            mcp_server_endpoint,
+            reconnect_config=self.reconnect_config,
+            headers=headers,
+            headers_provider=headers_provider,
+        )
 
     def get_default_message_handler(self):
         """Get the default message handler for SDK requests"""
@@ -254,13 +304,14 @@ class MCPSdkClient:
                 token_data = await self.auth_manager.get_token(force_refresh=True)
                 if token_data:
                     logger.info(
-                        "Token acquired successfully for reconnection, client_id: %s", token_data.client_id)
+                        "Token acquired successfully for reconnection, client_id: %s",
+                        token_data.client_id,
+                    )
                 else:
                     logger.error("Token acquisition returned None")
                 return token_data
         except Exception as e:
-            logger.error(
-                "Failed to get token for reconnection: %s", e, exc_info=True)
+            logger.error("Failed to get token for reconnection: %s", e, exc_info=True)
             return None
 
     @property

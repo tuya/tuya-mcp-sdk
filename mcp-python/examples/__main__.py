@@ -4,18 +4,19 @@ MCP SDK Enhanced Resilient Launcher - Supporting Service Dependencies and Readin
 
 """
 
-import asyncio
-import signal
-import logging
 import argparse
-import sys
+import asyncio
+import inspect
+import json
+import logging
 import os
-
+import signal
+import sys
 import time
-from typing import Dict, Any, Optional, List, Callable
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional
 
 # Try to import aiohttp, fallback to placeholder if not available
 try:
@@ -30,23 +31,28 @@ sys.path.insert(0, str(project_root / "src"))
 
 # Configure logging
 if sys.platform == "win32":
-    sys.stdout.reconfigure(encoding="utf-8")
-    sys.stderr.reconfigure(encoding="utf-8")
-    
+    stdout_reconfigure = getattr(sys.stdout, "reconfigure", None)
+    if callable(stdout_reconfigure):
+        _ = stdout_reconfigure(encoding="utf-8")
+
+    stderr_reconfigure = getattr(sys.stderr, "reconfigure", None)
+    if callable(stderr_reconfigure):
+        _ = stderr_reconfigure(encoding="utf-8")
+
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler(project_root / "examples" /
-                            "mcp_launcher_enhanced.log")
-    ]
+        logging.FileHandler(project_root / "examples" / "mcp_launcher_enhanced.log"),
+    ],
 )
 logger = logging.getLogger(__name__)
 
 
 class ServiceStatus(Enum):
     """Service status enumeration"""
+
     STARTING = "starting"
     RUNNING = "running"
     READY = "ready"  # New: Service ready status
@@ -59,11 +65,13 @@ class ServiceStatus(Enum):
 @dataclass
 class ServiceConfig:
     """Service configuration"""
+
     name: str
     endpoint: Optional[str] = None
     access_id: Optional[str] = None
     access_secret: Optional[str] = None
     custom_mcp_server_endpoint: Optional[str] = None
+    static_mcp_headers: Optional[Dict[str, str]] = None
     host: Optional[str] = "localhost"
     port: Optional[int] = 8765
     enable_resilience: bool = True
@@ -75,19 +83,22 @@ class ServiceReadinessChecker:
     """Service readiness checker"""
 
     @staticmethod
-    async def check_http_service(host: str, port: int, path: str = "/", timeout: int = 5) -> bool:
+    async def check_http_service(
+        host: str, port: int, path: str = "/", timeout: int = 5
+    ) -> bool:
         """Check if HTTP service is ready"""
         try:
             connector = aiohttp.TCPConnector(limit=1, limit_per_host=1)
             client_timeout = aiohttp.ClientTimeout(total=timeout)
 
             async with aiohttp.ClientSession(
-                connector=connector,
-                timeout=client_timeout
+                connector=connector, timeout=client_timeout
             ) as session:
                 url = f"http://{host}:{port}{path}"
                 async with session.get(url) as response:
-                    return response.status < 500  # Any non-5xx response is considered ready
+                    return (
+                        response.status < 500
+                    )  # Any non-5xx response is considered ready
 
         except Exception as e:
             logger.error("HTTP readiness check failed: %s", e)
@@ -114,7 +125,9 @@ class ServiceReadinessChecker:
             return False
 
         # Then try HTTP health check
-        return await ServiceReadinessChecker.check_http_service(host, port, "/health", timeout)
+        return await ServiceReadinessChecker.check_http_service(
+            host, port, "/health", timeout
+        )
 
 
 class EnhancedMockMCPServer:
@@ -134,8 +147,7 @@ class EnhancedMockMCPServer:
         self.host = host
         self.port = port
 
-        logger.info(
-            "Starting Enhanced Mock MCP Server on http://%s:%s", host, port)
+        logger.info("Starting Enhanced Mock MCP Server on http://%s:%s", host, port)
 
         # Start server in background
         self._server_task = asyncio.create_task(
@@ -166,7 +178,8 @@ class EnhancedMockMCPServer:
                     self._is_ready = True
                     self._ready_event.set()
                     logger.info(
-                        "Mock MCP Server is ready at http://%s:%s", self.host, self.port)
+                        "Mock MCP Server is ready at http://%s:%s", self.host, self.port
+                    )
                     break
 
             except Exception as e:
@@ -178,7 +191,9 @@ class EnhancedMockMCPServer:
 
         if not self._is_ready:
             logger.error(
-                "Mock MCP Server failed to become ready after %s seconds", max_attempts * 2)
+                "Mock MCP Server failed to become ready after %s seconds",
+                max_attempts * 2,
+            )
             return
 
         # Continuous health monitoring
@@ -204,11 +219,15 @@ class EnhancedMockMCPServer:
                 else:
                     consecutive_failures += 1
                     logger.warning(
-                        "Mock MCP Server health check failed (%s/%s)", consecutive_failures, max_failures)
+                        "Mock MCP Server health check failed (%s/%s)",
+                        consecutive_failures,
+                        max_failures,
+                    )
 
                     if consecutive_failures >= max_failures:
                         logger.error(
-                            "Mock MCP Server health check failed multiple times")
+                            "Mock MCP Server health check failed multiple times"
+                        )
                         self._is_ready = False
                         self._ready_event.clear()
 
@@ -225,8 +244,7 @@ class EnhancedMockMCPServer:
             await asyncio.wait_for(self._ready_event.wait(), timeout=timeout)
             return True
         except asyncio.TimeoutError:
-            logger.error(
-                "Mock MCP Server not ready after %s seconds", timeout)
+            logger.error("Mock MCP Server not ready after %s seconds", timeout)
             return False
 
     async def shutdown(self):
@@ -276,7 +294,8 @@ class DependencyManager:
         def visit(service_name: str):
             if service_name in temp_visited:
                 raise ValueError(
-                    f"Circular dependency detected involving {service_name}")
+                    f"Circular dependency detected involving {service_name}"
+                )
             if service_name in visited:
                 return
 
@@ -303,13 +322,14 @@ class EnhancedResilientServiceManager:
 
     def __init__(self):
         self.services: Dict[str, Any] = {}
-        self.service_tasks: Dict[str, asyncio.Task] = {}
+        self.service_tasks: Dict[str, asyncio.Task[None]] = {}
         self.status: Dict[str, ServiceStatus] = {}
         self._shutdown_event = asyncio.Event()
         self._service_configs: Dict[str, ServiceConfig] = {}
 
-    async def register_services_with_dependencies(self, configs: Dict[str, ServiceConfig],
-                                                  service_factories: Dict[str, Any]):
+    async def register_services_with_dependencies(
+        self, configs: Dict[str, ServiceConfig], service_factories: Dict[str, Any]
+    ):
         """Register multiple services and start in dependency order"""
         # Calculate startup order
         dep_manager = DependencyManager(configs)
@@ -326,9 +346,12 @@ class EnhancedResilientServiceManager:
             await self.register_service(service_name, factory, config)
 
             # Wait for service readiness (if there are dependents)
-            if any(c.depends_on and service_name in c.depends_on
-                   for c in configs.values()):
-                await self._wait_for_service_ready(service_name, config.readiness_timeout)
+            if any(
+                c.depends_on and service_name in c.depends_on for c in configs.values()
+            ):
+                await self._wait_for_service_ready(
+                    service_name, config.readiness_timeout
+                )
 
         logger.info("All services started successfully")
 
@@ -344,8 +367,7 @@ class EnhancedResilientServiceManager:
             self.services[name] = service
 
             # Start service monitoring task
-            task = asyncio.create_task(
-                self._run_service_with_monitoring(name, service))
+            task = asyncio.create_task(self._run_service_with_monitoring(name, service))
             self.service_tasks[name] = task
 
             self.status[name] = ServiceStatus.RUNNING
@@ -360,19 +382,17 @@ class EnhancedResilientServiceManager:
         """Wait for service readiness"""
         service = self.services.get(service_name)
         if not service:
-            logger.warning(
-                "Service %s not found for readiness check", service_name)
+            logger.warning("Service %s not found for readiness check", service_name)
             return
 
-        if hasattr(service, 'wait_for_ready'):
+        if hasattr(service, "wait_for_ready"):
             logger.info("Waiting for %s to be ready...", service_name)
             if await service.wait_for_ready(timeout):
                 self.status[service_name] = ServiceStatus.READY
                 logger.info("Service %s is ready", service_name)
             else:
-                logger.error(
-                    "Service %s not ready after %ss", service_name, timeout)
-        elif hasattr(service, 'is_ready'):
+                logger.error("Service %s not ready after %ss", service_name, timeout)
+        elif hasattr(service, "is_ready"):
             # Simple polling check
             start_time = time.time()
             while time.time() - start_time < timeout:
@@ -394,26 +414,33 @@ class EnhancedResilientServiceManager:
             logger.info("Starting service monitoring for: %s", name)
 
             # If it's an SDK client, start resilient listening
-            if hasattr(service, 'start_listening'):
-                logger.info(
-                    "Starting resilient listening for SDK client: %s", name)
+            if hasattr(service, "start_listening"):
+                logger.info("Starting resilient listening for SDK client: %s", name)
                 await service.start_listening()
             # If it's an MCP server
-            elif hasattr(service, 'start_server'):
+            elif hasattr(service, "start_server"):
                 config = self._service_configs.get(name)
                 if config:
-                    logger.info("Starting MCP server: %s on %s:%s",
-                                name, config.host, config.port)
+                    logger.info(
+                        "Starting MCP server: %s on %s:%s",
+                        name,
+                        config.host,
+                        config.port,
+                    )
                     await service.start_server(config.host, config.port)
                 else:
                     await service.start_server("localhost", 8765)
             # If it has a run method
-            elif hasattr(service, 'run') and callable(service.run):
-                await service.run()
+            elif hasattr(service, "run") and callable(service.run):
+                result = service.run()
+                if not inspect.isawaitable(result):
+                    raise TypeError(
+                        f"Service {name}.run() must be async (return awaitable), got {type(result)!r}"
+                    )
+                await result
             else:
                 # Keep service alive, waiting for shutdown signal
-                logger.info(
-                    "Service %s in standby mode, waiting for shutdown...", name)
+                logger.info("Service %s in standby mode, waiting for shutdown...", name)
                 await self._shutdown_event.wait()
 
         except asyncio.CancelledError:
@@ -435,11 +462,11 @@ class EnhancedResilientServiceManager:
     async def _shutdown_service(self, name: str, service):
         """Shutdown a single service"""
         try:
-            if hasattr(service, 'shutdown'):
+            if hasattr(service, "shutdown"):
                 await service.shutdown()
-            elif hasattr(service, 'cleanup'):
+            elif hasattr(service, "cleanup"):
                 await service.cleanup()
-            elif hasattr(service, 'close'):
+            elif hasattr(service, "close"):
                 await service.close()
             logger.info("Service %s shutdown completed", name)
         except Exception as e:
@@ -460,15 +487,16 @@ class EnhancedResilientServiceManager:
         for name, service in self.services.items():
             service_status = {
                 "status": self.status.get(name, ServiceStatus.STOPPED).value,
-                "running": name in self.service_tasks and not self.service_tasks[name].done(),
+                "running": name in self.service_tasks
+                and not self.service_tasks[name].done(),
             }
 
             # Get additional status information
-            if hasattr(service, 'is_connected'):
+            if hasattr(service, "is_connected"):
                 service_status["connected"] = service.is_connected
-            if hasattr(service, 'is_ready'):
+            if hasattr(service, "is_ready"):
                 service_status["ready"] = service.is_ready
-            if hasattr(service, 'get_endpoint'):
+            if hasattr(service, "get_endpoint"):
                 service_status["endpoint"] = service.get_endpoint()
 
             status_report[name] = service_status
@@ -494,6 +522,7 @@ class EnhancedResilientServiceManager:
 
 
 # Service factory functions
+
 
 async def create_enhanced_mcp_server(_: ServiceConfig):
     """Create enhanced MCP server instance"""
@@ -524,35 +553,41 @@ async def create_enhanced_sdk_client(config: ServiceConfig):
         from mcp_sdk import MCPSdkClient
 
         # Try to import new connection manager
+        from mcp_sdk.connection_manager import ReconnectConfig
+
+        has_resilience = False
         try:
             from mcp_sdk.connection_manager import ReconnectConfig
+
             has_resilience = True
             logger.info("Network resilience features available")
         except ImportError:
             has_resilience = False
             logger.warning(
-                "Network resilience features not available, using basic functionality")
+                "Network resilience features not available, using basic functionality"
+            )
 
         # Create client
         client = MCPSdkClient(
-            endpoint=config.endpoint or os.getenv(
-                "MCP_ENDPOINT", "wss://your-endpoint.com"),
-            access_id=config.access_id or os.getenv(
-                "MCP_ACCESS_ID", "your-access-id"),
-            access_secret=config.access_secret or os.getenv(
-                "MCP_ACCESS_SECRET", "your-access-secret"),
-            custom_mcp_server_endpoint=config.custom_mcp_server_endpoint or "http://localhost:8765"
+            endpoint=config.endpoint
+            or os.getenv("MCP_ENDPOINT", "wss://your-endpoint.com"),
+            access_id=config.access_id or os.getenv("MCP_ACCESS_ID", "your-access-id"),
+            access_secret=config.access_secret
+            or os.getenv("MCP_ACCESS_SECRET", "your-access-secret"),
+            custom_mcp_server_endpoint=config.custom_mcp_server_endpoint
+            or "http://localhost:8765",
+            headers=config.static_mcp_headers,
         )
 
         # If resilience is enabled and supported
         if config.enable_resilience and has_resilience:
             reconnect_config = ReconnectConfig(
-                base_interval=2.0,      # Base reconnection interval
-                max_interval=120.0,     # Maximum reconnection interval
-                max_retries=-1,         # Infinite retries
+                base_interval=2.0,  # Base reconnection interval
+                max_interval=120.0,  # Maximum reconnection interval
+                max_retries=-1,  # Infinite retries
                 backoff_multiplier=1.8,  # Exponential backoff multiplier
-                jitter_range=0.2,       # Jitter range
-                reset_threshold=50      # Reset threshold
+                jitter_range=0.2,  # Jitter range
+                reset_threshold=50,  # Reset threshold
             )
             client.reconnect_config = reconnect_config
             logger.info("Network resilience enabled for SDK client")
@@ -574,7 +609,15 @@ class EnhancedMCPLauncher:
 
     def __init__(self):
         self.service_manager = EnhancedResilientServiceManager()
-        self._monitoring_task: Optional[asyncio.Task] = None
+        self._monitoring_task: Optional[asyncio.Task[None]] = None
+        self._shutdown_task: Optional[asyncio.Task[None]] = None
+        self._force_exit_task: Optional[asyncio.Task[None]] = None
+
+    async def _force_exit_after(self, seconds: float) -> None:
+        await asyncio.sleep(seconds)
+        if self.service_manager._shutdown_event.is_set():
+            logger.error("Shutdown timeout exceeded (%ss); forcing exit", seconds)
+            os._exit(130)
 
     async def start_services(
         self,
@@ -583,7 +626,8 @@ class EnhancedMCPLauncher:
         access_id: Optional[str] = None,
         access_secret: Optional[str] = None,
         custom_mcp_server_endpoint: Optional[str] = None,
-        enable_resilience: bool = True
+        static_mcp_headers: Optional[Dict[str, str]] = None,
+        enable_resilience: bool = True,
     ):
         """Start services"""
         logger.info("Enhanced Resilient MCP Launcher Starting...")
@@ -604,7 +648,7 @@ class EnhancedMCPLauncher:
                     host="localhost",
                     port=8765,
                     enable_resilience=enable_resilience,
-                    readiness_timeout=30
+                    readiness_timeout=30,
                 )
                 service_factories["mcp_server"] = create_enhanced_mcp_server
 
@@ -617,9 +661,10 @@ class EnhancedMCPLauncher:
                     access_id=access_id,
                     access_secret=access_secret,
                     custom_mcp_server_endpoint=custom_mcp_server_endpoint,
+                    static_mcp_headers=static_mcp_headers,
                     enable_resilience=enable_resilience,
                     depends_on=depends_on,
-                    readiness_timeout=30
+                    readiness_timeout=30,
                 )
                 service_factories["sdk_client"] = create_enhanced_sdk_client
 
@@ -629,15 +674,13 @@ class EnhancedMCPLauncher:
             )
 
             # Start status monitoring
-            self._monitoring_task = asyncio.create_task(
-                self._monitor_services())
+            self._monitoring_task = asyncio.create_task(self._monitor_services())
 
             # Display service information
             await self._show_service_info(mode)
 
             # Wait for services to run or shutdown signal
-            logger.info(
-                "All services are ready and running. Press Ctrl+C to stop.")
+            logger.info("All services are ready and running. Press Ctrl+C to stop.")
             await self.service_manager._shutdown_event.wait()
 
         except Exception as e:
@@ -657,21 +700,20 @@ class EnhancedMCPLauncher:
                 logger.info("Enhanced Service Status Report:")
                 for name, status in status_report.items():
                     status_token = self._get_status_emoji(status["status"])
-                    logger.info(
-                        "   %s %s: %s", status_token, name, status['status'])
+                    logger.info("   %s %s: %s", status_token, name, status["status"])
 
                     if "connected" in status:
                         conn_emoji = "OK" if status["connected"] else "DOWN"
                         logger.info(
-                            "      %s Connected: %s", conn_emoji, status['connected'])
+                            "      %s Connected: %s", conn_emoji, status["connected"]
+                        )
 
                     if "ready" in status:
                         ready_emoji = "READY" if status["ready"] else "WAIT"
-                        logger.info(
-                            "      %s Ready: %s", ready_emoji, status['ready'])
+                        logger.info("      %s Ready: %s", ready_emoji, status["ready"])
 
                     if "endpoint" in status:
-                        logger.info("      Endpoint: %s", status['endpoint'])
+                        logger.info("      Endpoint: %s", status["endpoint"])
 
         except asyncio.CancelledError:
             logger.info("Service monitoring stopped")
@@ -687,7 +729,7 @@ class EnhancedMCPLauncher:
             "stopping": "STOP",
             "stopped": "OFF",
             "error": "ERROR",
-            "reconnecting": "RETRY"
+            "reconnecting": "RETRY",
         }
         return emoji_map.get(status, "UNKNOWN")
 
@@ -716,17 +758,29 @@ class EnhancedMCPLauncher:
 
     def _setup_signal_handlers(self):
         """Setup signal handlers"""
-        def signal_handler():
+
+        def signal_handler() -> None:
+            if self.service_manager._shutdown_event.is_set():
+                logger.warning("Second Ctrl+C received; forcing exit")
+                os._exit(130)
+
             logger.info("Received shutdown signal...")
-            asyncio.create_task(self.service_manager.graceful_shutdown())
+
+            self._shutdown_task = asyncio.create_task(
+                self.service_manager.graceful_shutdown()
+            )
+
+            if self._force_exit_task is None or self._force_exit_task.done():
+                self._force_exit_task = asyncio.create_task(self._force_exit_after(5.0))
 
         # Setup signal handlers
         try:
             for sig in [signal.SIGTERM, signal.SIGINT]:
-                asyncio.get_event_loop().add_signal_handler(sig, signal_handler)
+                asyncio.get_running_loop().add_signal_handler(sig, signal_handler)
         except NotImplementedError:
             # Windows doesn't support add_signal_handler
             import signal as sig_module
+
             sig_module.signal(sig_module.SIGINT, lambda s, f: signal_handler())
 
     async def _cleanup(self):
@@ -743,24 +797,79 @@ class EnhancedMCPLauncher:
 
 def parse_args():
     """Parse command line arguments"""
+
+    def parse_static_headers_json(value: str) -> Dict[str, str]:
+        try:
+            parsed = json.loads(value)
+        except Exception as e:
+            raise argparse.ArgumentTypeError(
+                f"--static-mcp-headers must be valid JSON object: {e}"
+            ) from e
+
+        if not isinstance(parsed, dict):
+            raise argparse.ArgumentTypeError(
+                '--static-mcp-headers must be a JSON object (e.g. \'{"Token":"abc"}\')'
+            )
+
+        out: Dict[str, str] = {}
+        for k, v in parsed.items():
+            if not isinstance(k, str) or not isinstance(v, str):
+                raise argparse.ArgumentTypeError(
+                    "--static-mcp-headers must be a JSON object with string keys and string values"
+                )
+            out[k] = v
+        return out
+
     parser = argparse.ArgumentParser(
-        description='Enhanced Resilient MCP Launcher - Enterprise-level launcher with dependency management and readiness detection'
+        description="Enhanced Resilient MCP Launcher - Enterprise-level launcher with dependency management and readiness detection"
     )
 
-    parser.add_argument('mode', choices=['all', 'server', 'client'], default='all', nargs='?',
-                        help='Startup mode: all (server+client), server (server only), client (client only)')
-    parser.add_argument('--endpoint', default=None,
-                        help='SDK endpoint (can be set via MCP_ENDPOINT environment variable)')
-    parser.add_argument('--access-id', default=None,
-                        help='Access ID (can be set via MCP_ACCESS_ID environment variable)')
-    parser.add_argument('--access-secret', default=None,
-                        help='Access secret (can be set via MCP_ACCESS_SECRET environment variable)')
-    parser.add_argument('--custom-mcp-server-endpoint', default='http://localhost:8765',
-                        help='Custom MCP server endpoint')
-    parser.add_argument('--disable-resilience', action='store_true',
-                        help='Disable network resilience features (use basic reconnection)')
-    parser.add_argument('--log-level', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
-                        default='INFO', help='Log level')
+    parser.add_argument(
+        "mode",
+        choices=["all", "server", "client"],
+        default="all",
+        nargs="?",
+        help="Startup mode: all (server+client), server (server only), client (client only)",
+    )
+    parser.add_argument(
+        "--endpoint",
+        default=None,
+        help="SDK endpoint (can be set via MCP_ENDPOINT environment variable)",
+    )
+    parser.add_argument(
+        "--access-id",
+        default=None,
+        help="Access ID (can be set via MCP_ACCESS_ID environment variable)",
+    )
+    parser.add_argument(
+        "--access-secret",
+        default=None,
+        help="Access secret (can be set via MCP_ACCESS_SECRET environment variable)",
+    )
+    parser.add_argument(
+        "--custom-mcp-server-endpoint",
+        default="http://localhost:8765",
+        help="Custom MCP server endpoint",
+    )
+    parser.add_argument(
+        "--static-mcp-headers",
+        "--static_mcp_headers",
+        dest="static_mcp_headers",
+        type=parse_static_headers_json,
+        default=None,
+        help='Static MCP headers as JSON object, e.g. \'{"Authorization":"Bearer test_server_token"}\'',
+    )
+    parser.add_argument(
+        "--disable-resilience",
+        action="store_true",
+        help="Disable network resilience features (use basic reconnection)",
+    )
+    parser.add_argument(
+        "--log-level",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        default="INFO",
+        help="Log level",
+    )
 
     return parser.parse_args()
 
@@ -781,7 +890,8 @@ async def main():
             access_id=args.access_id,
             access_secret=args.access_secret,
             custom_mcp_server_endpoint=args.custom_mcp_server_endpoint,
-            enable_resilience=not args.disable_resilience
+            static_mcp_headers=args.static_mcp_headers,
+            enable_resilience=not args.disable_resilience,
         )
     except KeyboardInterrupt:
         logger.info("Launcher stopped by user")
@@ -793,7 +903,9 @@ async def main():
 if __name__ == "__main__":
     print("Enhanced Resilient MCP Launcher")
     print("=" * 70)
-    print("Enterprise-level MCP launcher with service dependency management and readiness detection")
+    print(
+        "Enterprise-level MCP launcher with service dependency management and readiness detection"
+    )
     print()
     print("Enhanced Features:")
     print("  • Service dependency management (automatic startup ordering)")
@@ -828,6 +940,7 @@ if __name__ == "__main__":
         # Try to use uvloop for performance improvement
         try:
             import uvloop
+
             asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
             logger.info("Using uvloop for enhanced performance")
         except ImportError:

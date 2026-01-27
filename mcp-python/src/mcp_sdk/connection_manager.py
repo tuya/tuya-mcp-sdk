@@ -6,15 +6,17 @@ import asyncio
 import logging
 import random
 import time
-from typing import Optional, Callable, Any, List
-from enum import Enum
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from enum import Enum
+from typing import List, Optional, cast
 
 logger = logging.getLogger(__name__)
 
 
 class ConnectionState(Enum):
     """Connection state enumeration"""
+
     DISCONNECTED = "disconnected"
     CONNECTING = "connecting"
     CONNECTED = "connected"
@@ -26,17 +28,21 @@ class ConnectionState(Enum):
 @dataclass
 class ReconnectConfig:
     """Reconnection configuration"""
+
     base_interval: float = 1.0  # Base reconnection interval (seconds)
     max_interval: float = 120.0  # Maximum reconnection interval (seconds)
     max_retries: int = -1  # Maximum retry count, -1 means unlimited retries
     backoff_multiplier: float = 2.0  # Backoff multiplier
     jitter_range: float = 0.1  # Jitter range (0-1)
-    reset_threshold: int = 100  # Retry count threshold for resetting reconnection interval
+    reset_threshold: int = (
+        100  # Retry count threshold for resetting reconnection interval
+    )
 
 
 @dataclass
 class NetworkInfo:
     """Network information"""
+
     is_available: bool = True
     last_check_time: float = 0
     check_interval: float = 5.0  # Network check interval (seconds)
@@ -65,31 +71,34 @@ class ConnectionManager:
         # Reconnection management
         self._retry_count = 0
         self._current_interval = self.config.base_interval
-        self._reconnect_task: Optional[asyncio.Task] = None
+        self._reconnect_task: asyncio.Task[None] | None = None
         self._stop_event = asyncio.Event()
 
         # Network monitoring
         self._network_info = NetworkInfo()
-        self._network_monitor_task: Optional[asyncio.Task] = None
+        self._network_monitor_task: asyncio.Task[None] | None = None
 
         # Callback functions
-        self._state_change_callbacks: List[Callable[[
-            ConnectionState, ConnectionState], None]] = []
+        self._state_change_callbacks: List[
+            Callable[[ConnectionState, ConnectionState], None]
+        ] = []
         self._network_change_callbacks: List[Callable[[bool], None]] = []
 
         # Connector function
-        self._connector: Optional[Callable[[], Any]] = None
-        self._network_checker: Optional[Callable[[], bool]] = None
+        self._connector: Callable[[], Awaitable[None]] | None = None
+        self._network_checker: Callable[[], bool | Awaitable[bool]] | None = None
 
-    def set_connector(self, connector: Callable[[], Any]):
+    def set_connector(self, connector: Callable[[], Awaitable[None]]):
         """Set connector function"""
         self._connector = connector
 
-    def set_network_checker(self, checker: Callable[[], bool]):
+    def set_network_checker(self, checker: Callable[[], bool | Awaitable[bool]]):
         """Set network checker function"""
         self._network_checker = checker
 
-    def add_state_change_callback(self, callback: Callable[[ConnectionState, ConnectionState], None]):
+    def add_state_change_callback(
+        self, callback: Callable[[ConnectionState, ConnectionState], None]
+    ):
         """Add state change callback"""
         self._state_change_callbacks.append(callback)
 
@@ -105,7 +114,8 @@ class ConnectionManager:
             self._last_state_change = time.time()
 
             logger.info(
-                "Connection state changed: %s -> %s", old_state.value, new_state.value)
+                "Connection state changed: %s -> %s", old_state.value, new_state.value
+            )
 
             # Notify state change callbacks
             for callback in self._state_change_callbacks:
@@ -133,7 +143,8 @@ class ConnectionManager:
         """Start network monitoring"""
         if self._network_monitor_task is None or self._network_monitor_task.done():
             self._network_monitor_task = asyncio.create_task(
-                self._network_monitor_loop())
+                self._network_monitor_loop()
+            )
             logger.info("Network monitoring started")
 
     async def stop_monitoring(self):
@@ -238,9 +249,13 @@ class ConnectionManager:
         while not self._stop_event.is_set():
             try:
                 # Check if max retry count exceeded
-                if self.config.max_retries > 0 and self._retry_count >= self.config.max_retries:
+                if (
+                    self.config.max_retries > 0
+                    and self._retry_count >= self.config.max_retries
+                ):
                     logger.error(
-                        "Max retries (%s) reached, giving up", self.config.max_retries)
+                        "Max retries (%s) reached, giving up", self.config.max_retries
+                    )
                     self._set_state(ConnectionState.FAILED)
                     break
 
@@ -255,7 +270,8 @@ class ConnectionManager:
                 # Calculate reconnection delay (including jitter)
                 delay = self._calculate_retry_delay()
                 logger.info(
-                    "Reconnecting in %.1fs (attempt #%s)", delay, self._retry_count + 1)
+                    "Reconnecting in %.1fs (attempt #%s)", delay, self._retry_count + 1
+                )
 
                 try:
                     await asyncio.wait_for(self._stop_event.wait(), timeout=delay)
@@ -273,22 +289,27 @@ class ConnectionManager:
                 logger.info("Attempting reconnection #%s", self._retry_count)
 
                 success = await self.connect()
-                logger.info("Reconnection attempt #%s result: %s",
-                            self._retry_count, success)
+                logger.info(
+                    "Reconnection attempt #%s result: %s", self._retry_count, success
+                )
                 if success:
                     logger.info(
-                        "Reconnection successful after %s attempts", self._retry_count)
+                        "Reconnection successful after %s attempts", self._retry_count
+                    )
                     break
                 else:
                     logger.info(
-                        "Reconnection attempt #%s failed, will retry", self._retry_count)
+                        "Reconnection attempt #%s failed, will retry", self._retry_count
+                    )
                     # Update reconnection interval
                     self._update_retry_interval()
 
                     # Periodically reset reconnection interval
                     if self._retry_count % self.config.reset_threshold == 0:
                         logger.info(
-                            "Resetting retry interval after %s attempts", self._retry_count)
+                            "Resetting retry interval after %s attempts",
+                            self._retry_count,
+                        )
                         self._current_interval = self.config.base_interval
 
             except asyncio.CancelledError:
@@ -306,8 +327,7 @@ class ConnectionManager:
         base_delay = min(self._current_interval, self.config.max_interval)
 
         # Add jitter to avoid thundering herd effect
-        jitter = base_delay * self.config.jitter_range * \
-            (2 * random.random() - 1)
+        jitter = base_delay * self.config.jitter_range * (2 * random.random() - 1)
         delay = base_delay + jitter
 
         return max(0.1, delay)  # Minimum delay 0.1 seconds
@@ -316,7 +336,7 @@ class ConnectionManager:
         """Update retry interval"""
         self._current_interval = min(
             self._current_interval * self.config.backoff_multiplier,
-            self.config.max_interval
+            self.config.max_interval,
         )
 
     def _reset_retry_params(self):
@@ -348,7 +368,7 @@ class ConnectionManager:
                     try:
                         await asyncio.wait_for(
                             self._stop_event.wait(),
-                            timeout=self._network_info.check_interval
+                            timeout=self._network_info.check_interval,
                         )
                         break  # Stop signal received
                     except asyncio.TimeoutError:
@@ -376,11 +396,11 @@ class ConnectionManager:
 
             if self._network_checker:
                 try:
-                    # If it's a coroutine function
-                    if asyncio.iscoroutinefunction(self._network_checker):
-                        is_available = await self._network_checker()
+                    result = self._network_checker()
+                    if asyncio.iscoroutine(result):
+                        is_available = bool(await cast(Awaitable[bool], result))
                     else:
-                        is_available = self._network_checker()
+                        is_available = bool(result)
                 except Exception as e:
                     logger.debug("Network check failed: %s", e)
                     is_available = False
@@ -394,7 +414,8 @@ class ConnectionManager:
                 self._network_info.is_available = is_available
 
                 logger.info(
-                    "Network status changed: %s -> %s", old_status, is_available)
+                    "Network status changed: %s -> %s", old_status, is_available
+                )
 
                 # Notify network state change callbacks
                 for callback in self._network_change_callbacks:
@@ -404,9 +425,12 @@ class ConnectionManager:
                         logger.error("Error in network change callback: %s", e)
 
                 # Trigger immediate reconnection on network recovery
-                if is_available and not old_status and self._state == ConnectionState.DISCONNECTED:
-                    logger.info(
-                        "Network recovered, triggering immediate reconnect")
+                if (
+                    is_available
+                    and not old_status
+                    and self._state == ConnectionState.DISCONNECTED
+                ):
+                    logger.info("Network recovered, triggering immediate reconnect")
                     self.trigger_reconnect("Network recovery")
 
         except Exception as e:

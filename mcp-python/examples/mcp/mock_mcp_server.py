@@ -4,19 +4,18 @@ Mock MCP server using FastMCP framework for testing SDK's MCP client functionali
 """
 
 import asyncio
+import glob
 import logging
+import os
 import platform
 import subprocess
-import os
-import glob
 from datetime import datetime
-
-from starlette.requests import Request
-from starlette.responses import PlainTextResponse
+from typing import Annotated
 
 from fastmcp import FastMCP
 from pydantic import Field
-from typing import Annotated
+from starlette.requests import Request
+from starlette.responses import PlainTextResponse
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -28,6 +27,7 @@ class MockMCPServer:
 
     def __init__(self):
         # Create FastMCP application instance
+
         self.app = FastMCP("Mock MCP Server")
 
         # Register tools
@@ -40,9 +40,16 @@ class MockMCPServer:
 
         @self.app.tool
         def take_photo(
-            name: Annotated[str, Field(description="The name of the photo; e.g. 'photo1'")],
-            is_view: Annotated[bool, Field(
-                default=False, description="Whether to view the photo after taking it; e.g. 'true'")] = False
+            name: Annotated[
+                str, Field(description="The name of the photo; e.g. 'photo1'")
+            ],
+            is_view: Annotated[
+                bool,
+                Field(
+                    default=False,
+                    description="Whether to view the photo after taking it; e.g. 'true'",
+                ),
+            ] = False,
         ) -> str:
             """
             Take a photo
@@ -66,12 +73,18 @@ class MockMCPServer:
                     try:
                         # Use imagesnap if available (needs to be installed: brew install imagesnap)
                         result = subprocess.run(
-                            ['imagesnap', file_path], capture_output=True, text=True, check=True)
+                            ["imagesnap", file_path],
+                            capture_output=True,
+                            text=True,
+                            check=True,
+                        )
                         if result.returncode == 0:
                             response = f"Photo taken successfully: {name}"
                             if is_view:
-                                subprocess.Popen(['open', file_path])
-                                response = f"Photo taken successfully and viewed: {name}"
+                                subprocess.Popen(["open", file_path])
+                                response = (
+                                    f"Photo taken successfully and viewed: {name}"
+                                )
                             return response
                         else:
                             return "Error: imagesnap not found or failed. Install with: brew install imagesnap"
@@ -85,21 +98,37 @@ class MockMCPServer:
                 elif system == "Linux":  # Linux
                     # Try fswebcam or other tools
                     tools = [
-                        (['fswebcam', '-r', '640x480',
-                         '--no-banner', file_path], 'fswebcam'),
-                        (['ffmpeg', '-f', 'v4l2', '-i', '/dev/video0',
-                         '-vframes', '1', file_path], 'ffmpeg'),
+                        (
+                            ["fswebcam", "-r", "640x480", "--no-banner", file_path],
+                            "fswebcam",
+                        ),
+                        (
+                            [
+                                "ffmpeg",
+                                "-f",
+                                "v4l2",
+                                "-i",
+                                "/dev/video0",
+                                "-vframes",
+                                "1",
+                                file_path,
+                            ],
+                            "ffmpeg",
+                        ),
                     ]
 
                     for cmd, tool_name in tools:
                         try:
                             result = subprocess.run(
-                                cmd, capture_output=True, text=True, check=True)
+                                cmd, capture_output=True, text=True, check=True
+                            )
                             if result.returncode == 0:
                                 response = f"Photo taken successfully: {name}"
                                 if is_view:
-                                    subprocess.Popen(['xdg-open', file_path])
-                                    response = f"Photo taken successfully and viewed: {name}"
+                                    subprocess.Popen(["xdg-open", file_path])
+                                    response = (
+                                        f"Photo taken successfully and viewed: {name}"
+                                    )
                                 return response
                         except FileNotFoundError:
                             continue
@@ -114,8 +143,9 @@ class MockMCPServer:
 
         @self.app.tool
         def view_photo(
-            name: Annotated[str, Field(
-                description="The name of the photo; e.g. 'photo1'")]
+            name: Annotated[
+                str, Field(description="The name of the photo; e.g. 'photo1'")
+            ],
         ) -> str:
             """
             View a photo
@@ -139,11 +169,11 @@ class MockMCPServer:
                 system = platform.system()
 
                 if system == "Darwin":  # macOS
-                    subprocess.Popen(['open', photo_path])
+                    subprocess.Popen(["open", photo_path])
                 elif system == "Windows":  # Windows
-                    subprocess.Popen(['start', '', photo_path], shell=True)
+                    subprocess.Popen(["start", "", photo_path], shell=True)
                 elif system == "Linux":  # Linux
-                    subprocess.Popen(['xdg-open', photo_path])
+                    subprocess.Popen(["xdg-open", photo_path])
                 else:
                     return f"Error: Unsupported operating system: {system}"
 
@@ -155,8 +185,7 @@ class MockMCPServer:
 
         @self.app.tool
         def play_music(
-            name: Annotated[str, Field(
-                description="Music name; e.g. 'classic'")]
+            name: Annotated[str, Field(description="Music name; e.g. 'classic'")],
         ) -> str:
             """
             Play music by music name
@@ -176,13 +205,19 @@ class MockMCPServer:
                 # Find music files that contain the music_name
                 music_files = []
                 for file in os.listdir(music_dir):
-                    if (file.lower().find(name.lower()) != -1 and
-                            file.lower().endswith(('.mp3', '.wav', '.m4a', '.aac', '.ogg', '.flac'))):
+                    if file.lower().find(name.lower()) != -1 and file.lower().endswith(
+                        (".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac")
+                    ):
                         music_files.append(file)
 
                 if not music_files:
-                    available_files = [f for f in os.listdir(music_dir)
-                                       if f.lower().endswith(('.mp3', '.wav', '.m4a', '.aac', '.ogg', '.flac'))]
+                    available_files = [
+                        f
+                        for f in os.listdir(music_dir)
+                        if f.lower().endswith(
+                            (".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac")
+                        )
+                    ]
                     return f"Music not found: {name}\nAvailable music files: {', '.join(available_files) if available_files else 'None'}"
 
                 # Use the first matching music file
@@ -191,12 +226,12 @@ class MockMCPServer:
                 system = platform.system()
 
                 if system == "Darwin":  # macOS
-                    subprocess.Popen(['open', music_path])
+                    subprocess.Popen(["open", music_path])
                 elif system == "Windows":  # Windows
-                    subprocess.Popen(['start', '', music_path], shell=True)
+                    subprocess.Popen(["start", "", music_path], shell=True)
                 elif system == "Linux":  # Linux
                     # Try common Linux media players
-                    players = ['xdg-open', 'vlc', 'mplayer', 'mpv']
+                    players = ["xdg-open", "vlc", "mplayer", "mpv"]
                     for player in players:
                         try:
                             subprocess.Popen([player, music_path])
@@ -222,24 +257,35 @@ class MockMCPServer:
 
                 if system == "Darwin":  # macOS
                     # Kill music/media applications
-                    subprocess.run(['pkill', '-f', 'Music'],
-                                   capture_output=True, check=True)
-                    subprocess.run(['pkill', '-f', 'VLC'],
-                                   capture_output=True, check=True)
+                    subprocess.run(
+                        ["pkill", "-f", "Music"], capture_output=True, check=True
+                    )
+                    subprocess.run(
+                        ["pkill", "-f", "VLC"], capture_output=True, check=True
+                    )
                 elif system == "Windows":  # Windows
                     # Kill common media players
                     subprocess.run(
-                        ['taskkill', '/f', '/im', 'wmplayer.exe'], capture_output=True, check=True)
+                        ["taskkill", "/f", "/im", "wmplayer.exe"],
+                        capture_output=True,
+                        check=True,
+                    )
                     subprocess.run(
-                        ['taskkill', '/f', '/im', 'vlc.exe'], capture_output=True, check=True)
+                        ["taskkill", "/f", "/im", "vlc.exe"],
+                        capture_output=True,
+                        check=True,
+                    )
                 elif system == "Linux":  # Linux
                     # Kill common media players
-                    subprocess.run(['pkill', '-f', 'vlc'],
-                                   capture_output=True, check=True)
-                    subprocess.run(['pkill', '-f', 'mplayer'],
-                                   capture_output=True, check=True)
-                    subprocess.run(['pkill', '-f', 'mpv'],
-                                   capture_output=True, check=True)
+                    subprocess.run(
+                        ["pkill", "-f", "vlc"], capture_output=True, check=True
+                    )
+                    subprocess.run(
+                        ["pkill", "-f", "mplayer"], capture_output=True, check=True
+                    )
+                    subprocess.run(
+                        ["pkill", "-f", "mpv"], capture_output=True, check=True
+                    )
                 else:
                     return f"Error: Unsupported operating system: {system}"
 
@@ -249,15 +295,13 @@ class MockMCPServer:
                 logger.error("Stop music error: %s", e)
                 return f"Failed to stop music: {str(e)}"
 
-        logger.info(
-            "Tools registered: take_photo, view_photo, play_music, stop_music")
+        logger.info("Tools registered: take_photo, view_photo, play_music, stop_music")
 
     async def start_stdio(self):
         """Start MCP server in stdio mode"""
         logger.info("Mock MCP Server with FastMCP")
         logger.info("=" * 50)
-        logger.info(
-            "This server simulates an MCP server using FastMCP framework.")
+        logger.info("This server simulates an MCP server using FastMCP framework.")
         logger.info("")
         logger.info("Available capabilities:")
         logger.info("- Tools: take_photo, view_photo, play_music, stop_music")

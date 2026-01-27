@@ -16,7 +16,17 @@ mcpsdk = await create_mcpsdk(
     # Set Access ID, Access secret and Endpoint
     endpoint="your-endpoint",
     access_id="your-access-id", 
-    access_secret="your-access-secret"
+    access_secret="your-access-secret",
+    # Optional: Custom headers for MCP client, default is None, 
+    # you can set it for example: {"Authorization":"Bearer test_server_token"}
+    headers=None,
+    # Optional: Dynamic headers provider for MCP client, default is None, 
+    # you can provide it for example:
+    """
+    def headers_provider() -> dict[str, str]:
+        return {"Token": os.getenv("MCP_TOKEN", "")}
+    """
+    headers_provider=None,
 )
 ```
 
@@ -80,6 +90,7 @@ if __name__ == "__main__":
     - access-id: Tuya developer platform MCP access id
     - access-secret: Tuya developer platform MCP access secret
     - custom-mcp-server-endpoint: Address of custom MCP Server Endpoint declared in SDK; current demo includes an MCP Server example `http://localhost:8765/mcp`
+    - static-mcp-headers (OPTION): Static headers; e.g. `--static-mcp-headers '{"Authorization":"Bearer test_server_token"}'`
 
 ## 3. Develop Custom MCP Server
 > Developers develop custom MCP Servers based on business to provide capabilities for their devices.

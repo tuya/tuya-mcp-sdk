@@ -16,7 +16,17 @@ mcpsdk = await create_mcpsdk(
     # 设置 Access ID、Access secret 和 Endpoint
     endpoint="your-endpoint",
     access_id="your-access-id", 
-    access_secret="your-access-secret"
+    access_secret="your-access-secret",
+    # 可选: 自定义 MCP 客户端请求头, 默认为 None,
+    # 可以设置为: {"Authorization":"Bearer test_server_token"}
+    headers=None,
+    # 可选: 动态请求头提供函数, 默认为 None,
+    # 可以设置为定义的函数:
+    """
+    def headers_provider() -> dict[str, str]:
+        return {"Token": os.getenv("MCP_TOKEN", "")}
+    """
+    headers_provider=None,
 )
 ```
 
@@ -80,6 +90,7 @@ if __name__ == "__main__":
     - access-id: Tuya 开发者平台 MCP 访问 ID
     - access-secret: Tuya 开发者平台 MCP 访问密钥
     - custom-mcp-server-endpoint: SDK 中声明的自定义 MCP 服务器端点地址；当前演示包含一个 MCP 服务器示例 `http://localhost:8765/mcp`
+    - static-mcp-headers (可选): MCP 客户端携带静态自定义Header; e.g. `--static-mcp-headers '{"Authorization":"Bearer test_server_token"}'`
 
 ## 3. 开发自定义 MCP 服务器
 > 开发者基于业务开发自定义 MCP 服务器，为其设备提供能力。

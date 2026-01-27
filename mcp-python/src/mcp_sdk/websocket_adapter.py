@@ -1,41 +1,25 @@
-"""
-WebSocket Adapter for MCP SDK
-"""
+from __future__ import annotations
 
 import asyncio
 import json
 import logging
-from typing import Optional, Callable, Dict, Any, Union, Awaitable
+from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING, Any, Dict, Optional, Union, cast
 from urllib.parse import quote, urlparse
 
-# Try to import websockets with fallback
-try:
-    import websockets
+from .connection_manager import ConnectionState
+
+if TYPE_CHECKING:
     from websockets.asyncio.client import ClientConnection
-    from websockets.exceptions import ConnectionClosed, WebSocketException
-    from websockets import ConnectionState
-    WEBSOCKETS_AVAILABLE = True
-except ImportError:
-    # Fallback for when websockets is not available
-    WEBSOCKETS_AVAILABLE = False
-    ClientConnection = None
-    ConnectionClosed = Exception
-    WebSocketException = Exception
-    ConnectionState = None
 
-# Try to import pydantic with fallback
-try:
-    from pydantic import ValidationError
-    PYDANTIC_AVAILABLE = True
-except ImportError:
-    # Fallback for when pydantic is not available
-    PYDANTIC_AVAILABLE = False
-    ValidationError = Exception
+import websockets
+from pydantic import ValidationError
+from websockets.exceptions import ConnectionClosed, WebSocketException
 
-from .models import MCPSdkRequest, MCPSdkResponse, TokenData
-from .signature import SignatureUtils
 from .connection_manager import ConnectionManager, ReconnectConfig
 from .exceptions import ConnectionError
+from .models import MCPSdkRequest, MCPSdkResponse, TokenData
+from .signature import SignatureUtils
 
 logger = logging.getLogger(__name__)
 
@@ -48,12 +32,16 @@ class WebSocketAdapter:
         endpoint: str,
         access_id: str,
         access_secret: str,
-        message_handler: Optional[Callable[[
-            MCPSdkRequest], Union[MCPSdkResponse, Awaitable[MCPSdkResponse], None]]] = None,
-        token_provider: Optional[Callable[[], Optional[TokenData]]] = None,
-        reconnect_config: Optional[ReconnectConfig] = None
+        message_handler: Optional[
+            Callable[
+                [MCPSdkRequest], Union[MCPSdkResponse, Awaitable[MCPSdkResponse], None]
+            ]
+        ] = None,
+        token_provider: Optional[
+            Callable[[], Union[Optional[TokenData], Awaitable[Optional[TokenData]]]]
+        ] = None,
+        reconnect_config: Optional[ReconnectConfig] = None,
     ):
-
         self.endpoint = endpoint
         self.access_id = access_id
         self.access_secret = access_secret
@@ -69,18 +57,20 @@ class WebSocketAdapter:
         self._connection_manager = ConnectionManager(reconnect_config)
         self._connection_manager.set_connector(self._establish_connection)
         self._connection_manager.set_network_checker(
-            self._check_network_connectivity)  # type: ignore
+            self._check_network_connectivity_sync
+        )
         self._connection_manager.add_state_change_callback(
-            self._on_connection_state_change)
-        self._connection_manager.add_network_change_callback(
-            self._on_network_change)
+            self._on_connection_state_change
+        )
+        self._connection_manager.add_network_change_callback(self._on_network_change)
 
     def set_heartbeat_manager(self, heartbeat_manager):
         """Set heartbeat manager reference"""
         self._heartbeat_manager = heartbeat_manager
         if self._heartbeat_manager:
             self._heartbeat_manager.set_connection_failure_callback(
-                self._on_heartbeat_failure)
+                self._on_heartbeat_failure
+            )
 
     async def connect(self, token_data: TokenData) -> bool:
         """
@@ -106,9 +96,9 @@ class WebSocketAdapter:
             await self._refresh_token_for_reconnect()
             # Build WebSocket URL with cid as query parameter
             ws_url = f"{self.endpoint.rstrip('/')}/ws/mcp"
-            if ws_url.startswith('http'):
-                ws_url = ws_url.replace('http', 'ws', 1)
-            elif not ws_url.startswith('ws'):
+            if ws_url.startswith("http"):
+                ws_url = ws_url.replace("http", "ws", 1)
+            elif not ws_url.startswith("ws"):
                 ws_url = f"ws://{ws_url}"  # Use ws:// for local testing
 
             # Add cid as query parameter
@@ -119,17 +109,19 @@ class WebSocketAdapter:
 
             # Establish WebSocket connection
             self._websocket = await websockets.connect(
-                ws_url,
+                uri=ws_url,
                 additional_headers=headers,
                 ping_interval=30,
                 ping_timeout=10,
                 max_size=2**20,  # 1MB max message size
                 compression=None,  # Disable compression for better performance
-                proxy=None
+                proxy=None,
             )
 
-            logger.info("[MCP-SDK] WebSocket connection established successfully! Client ID: %s",
-                        self._token_data.client_id)
+            logger.info(
+                "[MCP-SDK] WebSocket connection established successfully! Client ID: %s",
+                self._token_data.client_id,
+            )
 
         except Exception as e:
             err_msg = f"WebSocket connection failed: {e}"
@@ -145,7 +137,7 @@ class WebSocketAdapter:
             access_id=self.access_id,
             access_secret=self._token_data.token,
             client_id=self._token_data.client_id,
-            path="/ws/mcp"
+            path="/ws/mcp",
         )
 
     async def start_listening(self):
@@ -187,18 +179,14 @@ class WebSocketAdapter:
                 except ConnectionClosed:
                     logger.warning("[MCP-SDK] WebSocket connection closed")
                     self._websocket = None
-                    self._connection_manager.trigger_reconnect(
-                        "Connection closed")
+                    self._connection_manager.trigger_reconnect("Connection closed")
                 except WebSocketException as e:
                     logger.error("[MCP-SDK] WebSocket error: %s", e)
                     self._websocket = None
-                    self._connection_manager.trigger_reconnect(
-                        f"WebSocket error: {e}")
+                    self._connection_manager.trigger_reconnect(f"WebSocket error: {e}")
                 except Exception as e:
-                    logger.error(
-                        "[MCP-SDK] Unexpected error: %s", e, exc_info=True)
-                    self._connection_manager.trigger_reconnect(
-                        f"Unexpected error: {e}")
+                    logger.error("[MCP-SDK] Unexpected error: %s", e, exc_info=True)
+                    self._connection_manager.trigger_reconnect(f"Unexpected error: {e}")
 
                 # Brief pause before retrying
                 await asyncio.sleep(1)
@@ -217,7 +205,9 @@ class WebSocketAdapter:
             # Stop connection manager
             await self._connection_manager.stop_monitoring()
 
-    def _on_connection_state_change(self, _old_state: ConnectionState, new_state: ConnectionState):
+    def _on_connection_state_change(
+        self, _old_state: ConnectionState, new_state: ConnectionState
+    ):
         """Connection state change callback"""
         # When connection is successful, restart heartbeat manager
         if new_state == ConnectionState.CONNECTED and self._heartbeat_manager:
@@ -230,14 +220,13 @@ class WebSocketAdapter:
         else:
             logger.warning("Network unavailable")
 
-    async def _check_network_connectivity(self) -> Optional[bool]:
+    async def _check_network_connectivity(self) -> bool:
         """Check network connectivity"""
         try:
-
             # Extract hostname from endpoint
             parsed = urlparse(self.endpoint)
-            host = parsed.hostname or parsed.netloc.split(':')[0]
-            port = parsed.port or (443 if parsed.scheme == 'https' else 80)
+            host = parsed.hostname or parsed.netloc.split(":")[0]
+            port = parsed.port or (443 if parsed.scheme == "https" else 80)
 
             # Try TCP connection test
             future = asyncio.open_connection(host, port)
@@ -247,11 +236,25 @@ class WebSocketAdapter:
                 await writer.wait_closed()
                 return True
             except (asyncio.TimeoutError, OSError, ConnectionError):
-                return None
+                return False
 
         except Exception as e:
             logger.debug("Network connectivity check error: %s", e)
-            return None  # If detection fails, assume network is available to avoid blocking reconnection
+            # If detection fails, assume network is available to avoid blocking reconnection
+            return True
+
+    def _check_network_connectivity_sync(self) -> bool:
+        """Sync wrapper for ConnectionManager network checker."""
+        try:
+            asyncio.get_running_loop()
+            # Event loop already running (expected). Assume network OK.
+            return True
+        except RuntimeError:
+            # No running loop.
+            try:
+                return bool(asyncio.run(self._check_network_connectivity()))
+            except Exception:
+                return True
 
     async def _monitor_heartbeat(self):
         """Heartbeat monitoring"""
@@ -265,10 +268,8 @@ class WebSocketAdapter:
 
                 # Check if heartbeat manager is still running
                 if self._heartbeat_manager and not self._heartbeat_manager.is_running:
-                    logger.warning(
-                        "Heartbeat manager stopped, connection may be lost")
-                    self._connection_manager.trigger_reconnect(
-                        "Heartbeat failure")
+                    logger.warning("Heartbeat manager stopped, connection may be lost")
+                    self._connection_manager.trigger_reconnect("Heartbeat failure")
 
         except asyncio.CancelledError:
             logger.debug("Heartbeat monitoring cancelled")
@@ -279,15 +280,16 @@ class WebSocketAdapter:
         """Heartbeat failure processing callback"""
         try:
             logger.warning("Heartbeat failure detected: %s", error)
-            self._connection_manager.trigger_reconnect(
-                f"Heartbeat failure: {error}")
+            self._connection_manager.trigger_reconnect(f"Heartbeat failure: {error}")
         except Exception as e:
-            logger.error("Error in heartbeat failure handler: %s",
-                         e, exc_info=True)
+            logger.error("Error in heartbeat failure handler: %s", e, exc_info=True)
 
-    async def _handle_message(self, message: str):
+    async def _handle_message(self, message: Union[str, bytes]):
         """Handle received message"""
         try:
+            if isinstance(message, bytes):
+                message = message.decode("utf-8")
+
             data = json.loads(message)
 
             # Notify heartbeat manager that message received
@@ -313,26 +315,34 @@ class WebSocketAdapter:
                         "endpoint": data.get("endpoint", ""),
                         "version": data.get("version", "1.0"),
                         "method": data.get("method", ""),
-                        "ts": data.get("ts", str(int(asyncio.get_event_loop().time() * 1000))),
-                        "request": data["request"]
+                        "ts": data.get(
+                            "ts", str(int(asyncio.get_event_loop().time() * 1000))
+                        ),
+                        "request": data["request"],
                     }
 
                     # Parse as SDK request
                     request = MCPSdkRequest(**converted_data)
                     logger.info(
-                        "[MCP-SDK] Received request: %s (ID: %s)", request.method, request.request_id)
+                        "[MCP-SDK] Received request: %s (ID: %s)",
+                        request.method,
+                        request.request_id,
+                    )
 
                     # Call message handler
                     if self.message_handler:
                         response = await self._call_message_handler(request)
                         if response:
-                            await self._send_response(response, original_request_data=data)
+                            await self._send_response(
+                                response, original_request_data=data
+                            )
                         else:
                             logger.info(
-                                "[MCP-SDK] No response required for request: %s", request.request_id)
+                                "[MCP-SDK] No response required for request: %s",
+                                request.request_id,
+                            )
                     else:
-                        logger.warning(
-                            "No message handler set, ignoring request")
+                        logger.warning("No message handler set, ignoring request")
                     return
 
                 except (json.JSONDecodeError, KeyError) as e:
@@ -346,11 +356,7 @@ class WebSocketAdapter:
         except json.JSONDecodeError as e:
             logger.error("JSON parsing failed: %s", e)
         except ValidationError as e:
-            if PYDANTIC_AVAILABLE:
-                logger.error("Message validation failed: %s", e)
-            else:
-                logger.error(
-                    "Message validation failed (pydantic not available): %s", e)
+            logger.error("Message validation failed: %s", e)
         except Exception as e:
             logger.error("Message handling failed: %s", e)
 
@@ -362,13 +368,11 @@ class WebSocketAdapter:
                 return False
 
             if not self._token_data:
-                logger.error(
-                    "Token data not available for signature verification")
+                logger.error("Token data not available for signature verification")
                 return False
 
             is_valid = SignatureUtils.verify_message_signature(
-                access_secret=self._token_data.token,
-                message_data=data
+                access_secret=self._token_data.token, message_data=data
             )
 
             if not is_valid:
@@ -382,20 +386,20 @@ class WebSocketAdapter:
             logger.error("Error during signature verification: %s", e)
             return False
 
-    async def _call_message_handler(self, request: MCPSdkRequest) -> Optional[MCPSdkResponse]:
+    async def _call_message_handler(
+        self, request: MCPSdkRequest
+    ) -> Optional[MCPSdkResponse]:
         """Call message handler"""
         try:
             method = request.method
 
             if method == "root/migrate":
-                logger.info(
-                    "Received root/migrate request, initiating reconnection")
+                logger.info("Received root/migrate request, initiating reconnection")
                 asyncio.create_task(self._handle_migrate_reconnect())
                 return None
 
             elif method == "root/kickout":
-                logger.warning(
-                    "Received root/kickout request, terminating connection")
+                logger.warning("Received root/kickout request, terminating connection")
                 asyncio.create_task(self._handle_kickout())
                 return None
 
@@ -417,28 +421,34 @@ class WebSocketAdapter:
                         version=request.version,
                         method=request.method,
                         ts=str(int(asyncio.get_event_loop().time() * 1000)),
-                        response=None
+                        response="message type is error",
+                        sign=None,
                     )
 
         except Exception as e:
             logger.error("Message handler execution failed: %s", e)
             error_string = json.dumps(
-                {"error": str(e)}, separators=(',', ':'), ensure_ascii=False)
+                {"error": str(e)}, separators=(",", ":"), ensure_ascii=False
+            )
             return MCPSdkResponse(
                 request_id=request.request_id,
                 endpoint=request.endpoint,
                 version=request.version,
                 method=request.method,
                 ts=str(int(asyncio.get_event_loop().time() * 1000)),
-                response=error_string
+                response=error_string,
+                sign=None,
             )
 
-    async def _send_response(self, response: MCPSdkResponse, original_request_data: Optional[Dict[str, Any]] = None):
+    async def _send_response(
+        self,
+        response: MCPSdkResponse,
+        original_request_data: Optional[Dict[str, Any]] = None,
+    ):
         """Send response"""
 
         if not original_request_data:
-            logger.warning(
-                "No original request data available, skipping response")
+            logger.warning("No original request data available, skipping response")
             return
 
         try:
@@ -450,7 +460,7 @@ class WebSocketAdapter:
                 "version": original_request_data.get("version", "1.0.0"),
                 "method": original_request_data.get("method", ""),
                 "ts": str(int(asyncio.get_event_loop().time() * 1000)),
-                "response": response_dict["response"]
+                "response": response_dict["response"],
             }
 
             if not self._token_data:
@@ -459,7 +469,8 @@ class WebSocketAdapter:
 
             # Sign response and add sign field
             signed_dict = SignatureUtils.sign_message(
-                self._token_data.token, new_format_response)
+                self._token_data.token, new_format_response
+            )
             new_format_response["sign"] = signed_dict["sign"]
 
             message = json.dumps(new_format_response, ensure_ascii=False)
@@ -468,7 +479,10 @@ class WebSocketAdapter:
             if self._websocket:
                 await self._websocket.send(message)
                 logger.info(
-                    "[MCP-SDK] Response sent: %s, message: %s", response.request_id, message)
+                    "[MCP-SDK] Response sent: %s, message: %s",
+                    response.request_id,
+                    message,
+                )
             else:
                 logger.error("WebSocket connection not available")
 
@@ -506,8 +520,7 @@ class WebSocketAdapter:
                 self._heartbeat_manager.set_websocket(self._websocket)
                 if not self._heartbeat_manager.is_running:
                     await self._heartbeat_manager.start()
-                    logger.info(
-                        "Heartbeat manager restarted after reconnection")
+                    logger.info("Heartbeat manager restarted after reconnection")
         except Exception as e:
             logger.error("Failed to restore heartbeat manager: %s", e)
 
@@ -516,15 +529,20 @@ class WebSocketAdapter:
         try:
             if self.token_provider:
                 logger.info("Refreshing token for reconnection...")
-                if asyncio.iscoroutinefunction(self.token_provider):
-                    new_token_data = await self.token_provider()
+                provided = self.token_provider()
+                if asyncio.iscoroutine(provided):
+                    new_token_data = await cast(
+                        Awaitable[Optional[TokenData]], provided
+                    )
                 else:
-                    new_token_data = self.token_provider()
+                    new_token_data = cast(Optional[TokenData], provided)
 
                 if new_token_data:
                     self._token_data = new_token_data
-                    logger.info("Token refreshed successfully for reconnection, client_id: %s",
-                                new_token_data.client_id)
+                    logger.info(
+                        "Token refreshed successfully for reconnection, client_id: %s",
+                        new_token_data.client_id,
+                    )
                     return new_token_data
                 else:
                     logger.error("Token provider returned None")
@@ -534,10 +552,15 @@ class WebSocketAdapter:
                 return self._token_data
         except Exception as e:
             logger.error(
-                "Failed to refresh token for reconnection: %s", e, exc_info=True)
+                "Failed to refresh token for reconnection: %s", e, exc_info=True
+            )
             return None
 
-    async def send_message(self, message: MCPSdkResponse, original_request_data: Optional[Dict[str, Any]] = None):
+    async def send_message(
+        self,
+        message: MCPSdkResponse,
+        original_request_data: Optional[Dict[str, Any]] = None,
+    ):
         """Send message to WebSocket"""
         if not self._connection_manager.is_connected:
             raise ConnectionError("WebSocket connection not established")

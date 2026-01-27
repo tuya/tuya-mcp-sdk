@@ -22,11 +22,7 @@ class HeartbeatManager:
     This manager is mainly used for monitoring connection status
     """
 
-    def __init__(
-        self,
-        ping_interval: int = 30,
-        ping_timeout: int = 10
-    ):
+    def __init__(self, ping_interval: int = 30, ping_timeout: int = 10):
         """
         Initialize heartbeat manager
 
@@ -38,7 +34,7 @@ class HeartbeatManager:
         self.ping_timeout = ping_timeout
 
         self._running = False
-        self._monitor_task: Optional[asyncio.Task] = None
+        self._monitor_task: Optional[asyncio.Task[None]] = None
         self._last_pong_time = 0
         self._websocket = None
         self._connection_failure_callback = None  # Connection failure callback
@@ -60,8 +56,11 @@ class HeartbeatManager:
         self._running = True
         self._last_pong_time = time.time()
         self._monitor_task = asyncio.create_task(self._monitor_loop())
-        logger.info("Heartbeat monitor started, ping_interval: %ss, ping_timeout: %ss",
-                    self.ping_interval, self.ping_timeout)
+        logger.info(
+            "Heartbeat monitor started, ping_interval: %ss, ping_timeout: %ss",
+            self.ping_interval,
+            self.ping_timeout,
+        )
 
     async def stop(self):
         """Stop heartbeat monitoring"""
@@ -93,40 +92,78 @@ class HeartbeatManager:
                 # Check WebSocket connection status
                 if self._websocket:
                     # Check if connection is closed
-                    if hasattr(self._websocket, 'closed') and self._websocket.closed:
+                    if hasattr(self._websocket, "closed") and self._websocket.closed:
                         logger.warning("WebSocket connection is closed")
                         raise HeartbeatError("WebSocket connection closed")
 
-                    # Check connection status
-                    if hasattr(self._websocket, 'state'):
+                    if hasattr(self._websocket, "state"):
                         try:
-                            # Use the new websockets API for compatibility
-                            try:
-                                from websockets import ConnectionState as State
-                            except ImportError:
-                                try:
-                                    from websockets.protocol import State
-                                except ImportError:
-                                    # Fallback - define state constants
-                                    class State:
-                                        OPEN = "OPEN"
+                            ws_state = self._websocket.state
 
-                            if self._websocket.state != State.OPEN:
+                            expected_open = None
+                            try:
+                                import websockets
+
+                                _connection_state = getattr(
+                                    websockets, "ConnectionState", None
+                                )
+                                expected_open = (
+                                    getattr(_connection_state, "OPEN", None)
+                                    if _connection_state is not None
+                                    else None
+                                )
+                            except Exception:
+                                expected_open = None
+
+                            if expected_open is None:
+                                try:
+                                    from websockets.protocol import State as _State
+
+                                    expected_open = getattr(_State, "OPEN", None)
+                                except Exception:
+                                    expected_open = None
+
+                            is_open = False
+                            if expected_open is not None:
+                                is_open = ws_state == expected_open
+
+                            if not is_open:
+                                ws_state_name = getattr(ws_state, "name", None)
+                                expected_name = getattr(expected_open, "name", None)
+                                if (
+                                    ws_state_name is not None
+                                    and expected_name is not None
+                                ):
+                                    is_open = ws_state_name == expected_name
+
+                            if not is_open:
+                                ws_state_str = str(ws_state).upper()
+                                if (
+                                    "OPEN" in ws_state_str
+                                    and "CLOSE" not in ws_state_str
+                                ):
+                                    is_open = True
+
+                            if expected_open is not None and not is_open:
                                 logger.warning(
-                                    "WebSocket state is not OPEN: %s", self._websocket.state)
+                                    "WebSocket state is not OPEN: %s",
+                                    ws_state,
+                                )
                                 raise HeartbeatError(
-                                    f"WebSocket state invalid: {self._websocket.state}")
-                        except ImportError:
-                            # websockets version may be different, continue other checks
+                                    f"WebSocket state invalid: {ws_state}"
+                                )
+                        except Exception:
                             pass
 
                     # Actively send ping to test connection (if websocket supports it)
                     try:
-                        if hasattr(self._websocket, 'ping'):
+                        if hasattr(self._websocket, "ping"):
                             logger.debug("Sending heartbeat ping...")
                             pong_waiter = await self._websocket.ping()
                             # Wait for pong response, set timeout
-                            await asyncio.wait_for(pong_waiter, timeout=self.ping_timeout)
+                            await asyncio.wait_for(
+                                pong_waiter, timeout=self.ping_timeout
+                            )
                             logger.debug("Heartbeat pong received")
                             self._last_pong_time = time.time()
                         else:
@@ -188,9 +225,6 @@ class HeartbeatManager:
         return self._running
 
     @property
-    def ping_config(self) -> dict:
+    def ping_config(self) -> dict[str, int]:
         """Get ping configuration for WebSocket connection"""
-        return {
-            "ping_interval": self.ping_interval,
-            "ping_timeout": self.ping_timeout
-        }
+        return {"ping_interval": self.ping_interval, "ping_timeout": self.ping_timeout}

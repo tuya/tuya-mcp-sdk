@@ -5,12 +5,12 @@ Unified startup interface and management class
 
 import asyncio
 import logging
-from typing import Optional, Dict, Any, Callable, Union
 from dataclasses import dataclass
+from typing import Any, Callable, Dict, Optional, Union
 
 from .client import MCPSdkClient
+from .exceptions import ConnectionError, MCPSdkError
 from .models import MCPSdkRequest, MCPSdkResponse
-from .exceptions import MCPSdkError, ConnectionError
 
 logger = logging.getLogger(__name__)
 
@@ -18,14 +18,18 @@ logger = logging.getLogger(__name__)
 @dataclass
 class MCPClientConfig:
     """MCP client configuration"""
+
     server_endpoint: str
     server_params: Optional[Dict[str, Any]] = None
     timeout: int = 30
+    headers: Optional[Dict[str, str]] = None
+    headers_provider: Optional[Callable[[], Dict[str, str]]] = None
 
 
 @dataclass
 class MCPSdkConfig:
     """MCPSdk configuration"""
+
     endpoint: str
     access_id: str
     access_secret: str
@@ -44,8 +48,9 @@ class MCPSdk:
         self,
         mcpsdk_config: MCPSdkConfig,
         mcp_client_config: Optional[MCPClientConfig] = None,
-        message_handler: Optional[Callable[[
-            MCPSdkRequest], Union[MCPSdkResponse, None]]] = None
+        message_handler: Optional[
+            Callable[[MCPSdkRequest], Union[MCPSdkResponse, None]]
+        ] = None,
     ):
         """
         Initialize MCP SDK
@@ -87,7 +92,7 @@ class MCPSdk:
 
             # 1. Initialize client
             custom_mcp_server_endpoint = None
-            if self.mcp_client_config:
+            if self.mcp_client_config and self.mcp_client_config.server_endpoint:
                 custom_mcp_server_endpoint = self.mcp_client_config.server_endpoint
 
             self.client = MCPSdkClient(
@@ -95,15 +100,32 @@ class MCPSdk:
                 access_id=self.mcpsdk_config.access_id,
                 access_secret=self.mcpsdk_config.access_secret,
                 custom_mcp_server_endpoint=custom_mcp_server_endpoint,
-                reconnect_config=None
+                custom_mcp_server_params=(
+                    self.mcp_client_config.server_params
+                    if self.mcp_client_config
+                    else None
+                ),
+                headers=(
+                    self.mcp_client_config.headers if self.mcp_client_config else None
+                ),
+                headers_provider=(
+                    self.mcp_client_config.headers_provider
+                    if self.mcp_client_config
+                    else None
+                ),
+                reconnect_config=None,
             )
 
             # Set custom message handler or default MCP forwarding handler
             if self.custom_message_handler:
-                self.client.websocket_adapter.message_handler = self.custom_message_handler
+                self.client.websocket_adapter.message_handler = (
+                    self.custom_message_handler
+                )
             elif self.mcp_client_config and self.mcp_client_config.server_endpoint:
                 # Set default MCP forwarding handler
-                self.client.websocket_adapter.message_handler = self.client.get_default_message_handler()
+                self.client.websocket_adapter.message_handler = (
+                    self.client.get_default_message_handler()
+                )
 
             # 2. Connect to MCPSdk (including authentication and WebSocket connection)
             await self.client.connect()
@@ -154,7 +176,8 @@ class MCPSdk:
     async def shutdown(self):
         """Close MCPSdk connection"""
         try:
-            await self.client.shutdown()
+            if self.client:
+                await self.client.shutdown()
             logger.info("MCP SDK shutdown complete")
 
         except Exception as e:
@@ -191,9 +214,9 @@ class MCPSdk:
     def is_connected(self) -> bool:
         """Check if connected"""
         return (
-            self.client is not None and
-            self._startup_complete and
-            self.client.websocket_adapter.is_connected
+            self.client is not None
+            and self._startup_complete
+            and self.client.websocket_adapter.is_connected
         )
 
     @property
@@ -219,9 +242,10 @@ def create_mcpsdk(
     access_secret: str,
     custom_mcp_server_endpoint: Optional[str] = None,
     custom_mcp_server_params: Optional[Dict[str, Any]] = None,
-    message_handler: Optional[Callable[[MCPSdkRequest],
-                                       Union[MCPSdkResponse, None]]] = None,
-    **kwargs
+    message_handler: Optional[
+        Callable[[MCPSdkRequest], Union[MCPSdkResponse, None]]
+    ] = None,
+    **kwargs,
 ) -> MCPSdk:
     """
     Convenience function: Create and start MCPSdk
@@ -244,21 +268,28 @@ def create_mcpsdk(
         endpoint=endpoint,
         access_id=access_id,
         access_secret=access_secret,
-        **{k: v for k, v in kwargs.items() if k in ['heartbeat_interval', 'reconnect_interval', 'max_reconnect_attempts']}
+        **{
+            k: v
+            for k, v in kwargs.items()
+            if k
+            in ["heartbeat_interval", "reconnect_interval", "max_reconnect_attempts"]
+        },
     )
 
     mcp_client_config = None
     if custom_mcp_server_endpoint:
         mcp_client_config = MCPClientConfig(
             server_endpoint=custom_mcp_server_endpoint,
-            server_params=custom_mcp_server_params
+            server_params=custom_mcp_server_params,
+            headers=kwargs.get("headers"),
+            headers_provider=kwargs.get("headers_provider"),
         )
 
     # Create MCPSdk (startup will be called in __aenter__)
     mcpsdk = MCPSdk(
         mcpsdk_config=mcpsdk_config,
         mcp_client_config=mcp_client_config,
-        message_handler=message_handler
+        message_handler=message_handler,
     )
 
     return mcpsdk
@@ -271,9 +302,10 @@ def run_mcpsdk(
     access_secret: str,
     custom_mcp_server_endpoint: Optional[str] = None,
     custom_mcp_server_params: Optional[Dict[str, Any]] = None,
-    message_handler: Optional[Callable[[MCPSdkRequest],
-                                       Union[MCPSdkResponse, None]]] = None,
-    **kwargs
+    message_handler: Optional[
+        Callable[[MCPSdkRequest], Union[MCPSdkResponse, None]]
+    ] = None,
+    **kwargs,
 ):
     """
     Run MCPSdk synchronously
@@ -287,6 +319,7 @@ def run_mcpsdk(
         message_handler: Message handler
         **kwargs: Other configuration parameters
     """
+
     async def _run():
         async with create_mcpsdk(
             endpoint=endpoint,
@@ -295,7 +328,7 @@ def run_mcpsdk(
             custom_mcp_server_endpoint=custom_mcp_server_endpoint,
             custom_mcp_server_params=custom_mcp_server_params,
             message_handler=message_handler,
-            **kwargs
+            **kwargs,
         ) as mcpsdk:
             await mcpsdk.run()
 
