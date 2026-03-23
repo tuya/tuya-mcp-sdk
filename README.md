@@ -3,6 +3,7 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.24+-00ADD8?style=flat&logo=go)](https://golang.org/)
 [![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=flat&logo=python)](https://www.python.org/)
+[![C#](https://img.shields.io/badge/.NET-10+-512BD4?style=flat&logo=dotnet)](https://dotnet.microsoft.com/)
 [![MCP](https://img.shields.io/badge/MCP-Compatible-green)](https://modelcontextprotocol.io/)
 
 
@@ -14,7 +15,7 @@ A comprehensive SDK that empowers developers to integrate their custom capabilit
 ## ✨ Features
 
 - 🔌 **Easy Integration**: Simple SDK for connecting Tuya Developer Platform to MCP servers
-- 🐍 **Multi-Language Support**: Available in Python and Go
+- 🐍 **Multi-Language Support**: Available in Python, Go, and C#
 - 🔒 **Secure Authentication**: Robust authentication with Tuya Cloud
 - 📱 **Real-time Communication**: WebSocket-based real-time interaction
 - 🎯 **Production Ready**: Comprehensive error handling and retry mechanisms
@@ -57,6 +58,9 @@ The Tuya MCP SDK bridges the gap between Custom MCP Server and Tuya Developer Pl
 #### 🐹 Go SDK Example
 - [Golang SDK Example](mcp-golang)
 
+#### 🔷 C# SDK Example
+- [C# SDK Example](mcp-csharp)
+
 ## 📖 Documentation
 
 | Resource | Description |
@@ -64,6 +68,7 @@ The Tuya MCP SDK bridges the gap between Custom MCP Server and Tuya Developer Pl
 | [📋 Setup Instructions](docs/instructions.md) | Complete setup guide for Tuya Developer Platform |
 | [🐍 Python SDK Docs](mcp-python/README.md) | Python SDK documentation and examples |
 | [🐹 Go SDK Docs](mcp-golang/README.md) | Go SDK documentation and examples |
+| [🔷 C# SDK Docs](mcp-csharp/README.md) | C# SDK documentation and examples |
 | [🏗️ Architecture](docs/architecture_diagram/) | System architecture diagrams |
 
 ## 📁 Project Structure
@@ -79,10 +84,14 @@ tuya-mcp-sdk/
 │   ├── src/mcp_sdk/            # Core SDK modules
 │   ├── examples/               # Python examples
 │   └── README.md               # Python-specific docs
-└── 📁 mcp-golang/              # Go SDK
-    ├── pkg/                    # Go packages
-    ├── examples/               # Go examples
-    └── README.md               # Go-specific docs
+├── 📁 mcp-golang/              # Go SDK
+│   ├── pkg/                    # Go packages
+│   ├── examples/               # Go examples
+│   └── README.md               # Go-specific docs
+└── 📁 mcp-csharp/              # C# SDK
+    ├── src/Tuya.McpSdk/        # Core SDK library (.NET 10)
+    ├── examples/               # C# examples
+    └── README.md               # C#-specific docs
 ```
 
 ## 📜 License
