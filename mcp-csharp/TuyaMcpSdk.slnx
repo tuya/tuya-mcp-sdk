@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="src/Tuya.McpSdk/Tuya.McpSdk.csproj" />
+  <Project Path="examples/TuyaMcpSdk.Example/TuyaMcpSdk.Example.csproj" />
+</Solution>
