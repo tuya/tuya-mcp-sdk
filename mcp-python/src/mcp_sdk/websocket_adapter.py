@@ -319,6 +319,7 @@ class WebSocketAdapter:
                             "ts", str(int(asyncio.get_event_loop().time() * 1000))
                         ),
                         "request": data["request"],
+                        "meta": data.get("meta"),
                     }
 
                     # Parse as SDK request

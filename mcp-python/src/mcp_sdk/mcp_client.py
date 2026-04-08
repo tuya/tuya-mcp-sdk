@@ -401,8 +401,14 @@ class MCPClientManager:
             method = mcp_request.get("method")
             params = mcp_request.get("params", {})
 
+            # Extract _meta from params (MCP protocol standard location),
+            # fall back to WebSocket-level meta
+            meta = params.pop("_meta", None) or request.meta
+
             # Forward to MCP server
-            response_string = await self._forward_mcp_request(method, params)
+            response_string = await self._forward_mcp_request(
+                method, params, meta=meta
+            )
 
             # Update success metrics
             self._last_successful_request = time.time()
@@ -485,13 +491,18 @@ class MCPClientManager:
                 sign=None,
             )
 
-    async def _forward_mcp_request(self, method: str, params: dict[str, Any]) -> str:
+    async def _forward_mcp_request(
+        self, method: str, params: dict[str, Any], meta: dict[str, Any] | None = None
+    ) -> str:
         """
         Forward MCP request to server using FastMCP
 
         Args:
             method: MCP method name
             params: MCP method parameters
+            meta: Meta information from WebSocket message, passed through to
+                  FastMCP call_tool so that server-side tools can access it
+                  via context.request_context.meta
 
         Returns:
             MCP response data as JSON string
@@ -562,7 +573,7 @@ class MCPClientManager:
 
                 # Add timeout protection for tool calls
                 result = await asyncio.wait_for(
-                    self._client.call_tool(tool_name, arguments),
+                    self._client.call_tool(tool_name, arguments, meta=meta),
                     # Use reasonable timeout for tool calls
                     timeout=min(120, self.timeout),
                 )
