@@ -41,6 +41,8 @@ class MCPSdkRequest(BaseModel):
     request: str = Field(..., description="Request data as JSON string")
     sign: Optional[str] = Field(
         None, description="Message signature, not included in signing")
+    meta: Optional[dict] = Field(
+        None, description="Meta information from WebSocket message")
 
 
 class MCPSdkResponse(BaseModel):
