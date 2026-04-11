@@ -98,10 +98,13 @@ tuya-mcp-sdk/
 
 This project is licensed under the Apache License 2.0 - see the [LICENSE](License) file for details.
 
+## Pip Installation
+Now the sdk can be installed via pip（https://pypi.org/project/tuya-developer-agent-mcp-sdk/0.1.0/）
 ## 🆘 Support
 
 - 📚 **Documentation**: Check our [docs](docs/) for detailed guides
 - 🐛 **Bug Reports**: [Open an issue](https://github.com/tuya/tuya-mcp-sdk/issues)
 - 💬 **Questions**: [Tuya Developer Community](https://www.tuyaos.com/)
 - 🏢 **Enterprise**: Contact [Tuya Support](https://service.console.tuya.com/)
+
 
